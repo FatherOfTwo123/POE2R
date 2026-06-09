@@ -86,6 +86,7 @@ public sealed class RadarApp : IDisposable
     private DateTime _nextPathKeyAt = DateTime.MinValue;
     private DateTime _nextBrowserAt = DateTime.MinValue;
     private float _hpPct = 100f, _manaPct = 100f;
+    private float _playerWorldZ;   // ground-plane height for world-drawn routes (see Poe2Live.PlayerWorld)
     private IReadOnlyList<Poe2Live.Buff> _buffs = Array.Empty<Poe2Live.Buff>();
     // Preload alerts (A1): scanned once per area. Inert (always empty) until the File Root +
     // AreaChangeCounter AOB patterns resolve on PoE2 — see Bootstrap.ResolvePreloadSlots / Poe2.Preload.
@@ -282,22 +283,41 @@ public sealed class RadarApp : IDisposable
     public void Run()
     {
         _gameHwnd = OverlayNative.FindWindowForProcess(_process.ProcessId);
-        while (!_shutdown)
+        // 1 ms sleep granularity for the frame pacer. At Windows' default timer resolution
+        // (~15.6 ms) Thread.Sleep(16) can take ~31 ms, capping the real frame rate far below
+        // FpsCap and making HP bars/routes visibly stutter. Affects only OUR sleeps.
+        var timerRaised = TimeBeginPeriod(1) == 0;
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        try
         {
-            if (_gameHwnd == 0) _gameHwnd = OverlayNative.FindWindowForProcess(_process.ProcessId);
-            if (_gameHwnd != 0) _window.TrackGameWindow(_gameHwnd);
-            if (!_window.PumpMessages()) break;
-            Tick();
-            // Configurable frame budget (read live so dashboard edits apply immediately). The world
-            // walk is independently throttled to WorldHz inside Tick().
-            var hz = Math.Clamp(_settings.FpsCap, 15, 360);
-            Thread.Sleep(Math.Max(1, 1000 / hz));
+            while (!_shutdown)
+            {
+                var frameStart = clock.Elapsed.TotalMilliseconds;
+                if (_gameHwnd == 0) _gameHwnd = OverlayNative.FindWindowForProcess(_process.ProcessId);
+                if (_gameHwnd != 0) _window.TrackGameWindow(_gameHwnd);
+                if (!_window.PumpMessages()) break;
+                Tick();
+                // Configurable frame budget (read live so dashboard edits apply immediately). Sleep only
+                // the REMAINDER after the tick's own cost — sleeping the full budget on top of the tick
+                // (the old behavior) made the real rate FpsCap-minus-tick-time, not FpsCap. Always yield
+                // ≥1 ms so a heavy tick can never spin a core. The world walk is independently throttled
+                // to WorldHz inside Tick().
+                var hz = Math.Clamp(_settings.FpsCap, 15, 360);
+                var remaining = 1000.0 / hz - (clock.Elapsed.TotalMilliseconds - frameStart);
+                Thread.Sleep(Math.Max(1, (int)remaining));
+            }
         }
+        finally { if (timerRaised) TimeEndPeriod(1); }
     }
 
     private void Tick()
     {
         HandleHotkeys();
+
+        // Focus state, computed up front: it gates the per-frame HP refresh below as well as the draw.
+        var realActive = _gameHwnd != 0 && GetForegroundWindow() == _gameHwnd;
+        // "Always show" draws the overlay even when PoE2 isn't focused (for dashboard calibration).
+        var drawActive = realActive || _settings.AlwaysShowOverlay;
 
         var inGame = _live.TryResolve(out var inGameState, out var areaInstance, out var localPlayer);
         var player = NumVec2.Zero;
@@ -313,7 +333,14 @@ public sealed class RadarApp : IDisposable
             _areaHash = _live.AreaHash(areaInstance);
             areaLevel = _live.AreaLevel(areaInstance);
 
-            player = _live.PlayerGrid(localPlayer) ?? NumVec2.Zero;
+            // One world-position read yields both the grid position and the ground-plane Z that
+            // world-drawn routes project onto (the renderer can't get it from the entity list — the
+            // local player is culled from it).
+            if (_live.PlayerWorld(localPlayer) is { } pw)
+            {
+                player = new NumVec2(pw.X / Poe2.WorldToGridRatio, pw.Y / Poe2.WorldToGridRatio);
+                _playerWorldZ = pw.Z;
+            }
             map = _live.ReadMap(inGameState, areaInstance);
             _areaCode = _live.AreaCode(areaInstance);
             // Player name reads a StdWString (allocates a string) — read it only when the local-player
@@ -432,13 +459,15 @@ public sealed class RadarApp : IDisposable
 
             // EVERY render frame (not just world ticks): refresh the live position + HP of each HP-bar mob
             // so the bars track moving monsters smoothly. Cheap — two tiny reads per bar via cached
-            // component addresses; only the ~dozens of bar mobs, never the full entity map.
+            // component addresses; only the ~dozens of bar mobs, never the full entity map. Skipped
+            // entirely while the overlay isn't drawing (alt-tabbed) — the bars are render-only data.
             _hpFrame.Clear();
-            foreach (var spec in _hpSpecs)
-            {
-                if (!_live.TryLiveBar(spec.Entity, out var w, out var cur, out var max) || max <= 0 || cur <= 0) continue;
-                _hpFrame.Add(new HpBarTarget(w, Math.Clamp((float)cur / max, 0f, 1f), spec.Width, spec.Fill, spec.BorderWidth, spec.Border));
-            }
+            if (drawActive)
+                foreach (var spec in _hpSpecs)
+                {
+                    if (!_live.TryLiveBar(spec.Entity, out var w, out var cur, out var max) || max <= 0 || cur <= 0) continue;
+                    _hpFrame.Add(new HpBarTarget(w, Math.Clamp((float)cur / max, 0f, 1f), spec.Width, spec.Fill, spec.BorderWidth, spec.Border));
+                }
         }
         else
         {
@@ -453,9 +482,6 @@ public sealed class RadarApp : IDisposable
         _state = new RadarState(inGame, _areaHash, areaLevel, map.IsVisible, map.Zoom, player, _entities, _landmarks,
             _hpPct, _manaPct, _areaCode, _charName, _charLevel, _buffs, _preloads);
 
-        var realActive = _gameHwnd != 0 && GetForegroundWindow() == _gameHwnd;
-        // "Always show" draws the overlay even when PoE2 isn't focused (for dashboard calibration).
-        var drawActive = realActive || _settings.AlwaysShowOverlay;
         var atlasProj = AtlasProjection(); // resolution-correct (derived live from the window height)
         var ctx = new RenderContext(
             InGame: inGame,
@@ -476,6 +502,7 @@ public sealed class RadarApp : IDisposable
             AreaCode: _areaCode,
             CharLevel: _charLevel,
             CameraMatrix: _cameraMatrix,
+            PlayerWorldZ: _playerWorldZ,
             HideJunk: _settings.HideJunk,
             ShowPath: _settings.ShowPath,
             UseCuratedLandmarks: _settings.UseCuratedLandmarks,
@@ -1429,6 +1456,12 @@ public sealed class RadarApp : IDisposable
     }
 
     private static bool Down(int vk) => (GetAsyncKeyState(vk) & 0x8000) != 0;
+
+    [DllImport("winmm.dll", EntryPoint = "timeBeginPeriod")]
+    private static extern uint TimeBeginPeriod(uint uPeriod);
+
+    [DllImport("winmm.dll", EntryPoint = "timeEndPeriod")]
+    private static extern uint TimeEndPeriod(uint uPeriod);
 
     [DllImport("user32.dll")]
     private static extern short GetAsyncKeyState(int vKey);

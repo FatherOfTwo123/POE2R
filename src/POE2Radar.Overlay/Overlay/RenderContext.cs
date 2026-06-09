@@ -55,6 +55,9 @@ public sealed record RenderContext(
     int CharLevel,
     // WorldToScreen matrix (16 floats, row-major) for world-space nameplates; null if unavailable.
     float[]? CameraMatrix,
+    // The local player's world-space Z — the ground-plane height world-drawn routes project onto.
+    // (The local player is culled from Entities, so the renderer can't recover it from there.)
+    float PlayerWorldZ,
     // ── Phase 1 features (all gated by their settings flag below). ──
     // Feature flags mirrored from RadarSettings.
     bool HideJunk,

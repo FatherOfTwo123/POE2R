@@ -319,10 +319,10 @@ public sealed class OverlayRenderer : IDisposable
         if (ctx.CameraMatrix is not { } m || ctx.SelectedPaths.Count == 0) return;
         float W = ctx.WindowWidth, H = ctx.WindowHeight;
 
-        // Ground plane height = the player entity's world Z (paths sit at the player's feet).
-        var z = 0f;
-        foreach (var e in ctx.Entities)
-            if (e.Category == Poe2Live.EntityCategory.Player) { z = e.World.Z; break; }
+        // Ground plane height = the local player's world Z (paths sit at the player's feet). Read
+        // directly — the local player is CULLED from ctx.Entities, so scanning it for a Player-category
+        // entity finds nothing when solo (the old code drew solo routes at z=0).
+        var z = ctx.PlayerWorldZ;
 
         foreach (var path in ctx.SelectedPaths)
         {

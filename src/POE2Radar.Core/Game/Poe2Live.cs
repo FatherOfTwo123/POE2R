@@ -190,6 +190,11 @@ public sealed class Poe2Live
     /// <summary>Player grid position (from the Render component's world position ÷ grid ratio).</summary>
     public System.Numerics.Vector2? PlayerGrid(nint localPlayer) => EntityGrid(localPlayer);
 
+    /// <summary>Player WORLD position (Render component). The Z is the ground-plane height world-space
+    /// drawing projects onto (the local player is culled from the entity list, so the renderer can't
+    /// recover it from there).</summary>
+    public Vector3? PlayerWorld(nint localPlayer) => EntityWorld(localPlayer);
+
     public readonly record struct Vitals(int HpCur, int HpUnreserved, int ManaCur, int ManaUnreserved)
     {
         public float HpPct   => HpUnreserved   > 0 ? 100f * HpCur   / HpUnreserved   : 100f;
@@ -911,11 +916,13 @@ public sealed class Poe2Live
         meta.Contains("Basket", StringComparison.Ordinal) ||
         meta.Contains("Coffin", StringComparison.Ordinal);
 
-    /// <summary>True for "/Monsters/" entities that aren't real fight targets (effects / summons).</summary>
+    /// <summary>True for "/Monsters/" entities that aren't real fight targets (effects / summons).
+    /// "/Daemon" (no closing slash) covers both the "/Daemon/" directory and plural "/Daemons/"
+    /// (e.g. LeagueRitual/Daemons/BloodWave — invisible ritual effect carriers, not fight targets).</summary>
     private static bool IsNonCombat(string meta) =>
         meta.Contains("MonsterMods", StringComparison.Ordinal) ||
         meta.Contains("Summoned", StringComparison.Ordinal) ||
-        meta.Contains("/Daemon/", StringComparison.Ordinal) ||
+        meta.Contains("/Daemon", StringComparison.Ordinal) ||
         meta.Contains("Invisible", StringComparison.Ordinal);
 
     /// <summary>Resolve a component address by name via EntityDetails → ComponentLookUp (StdBucket) → ComponentList.</summary>

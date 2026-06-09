@@ -296,6 +296,14 @@ public sealed class Poe2Atlas
     // (content is stable while the atlas is open) and resolved at a bounded rate to avoid a tick hitch.
     private readonly Dictionary<nint, (string map, string[] content)> _tagCache = new();
     private static readonly string[] NoTags = Array.Empty<string>();
+    // Per-element icon type (the nested sigil-icon child walk) — stable while the atlas is open, so it's
+    // resolved once and cached rather than re-walked 30×/s for every node. Cleared with the other caches.
+    private readonly Dictionary<nint, int> _iconTypeCache = new();
+    // Reused bulk-read buffers (under _nodeLock): the canvas's child-pointer array in ONE read, and one
+    // element-header read covering vtable(0x00)…Completion(0x339) — see ReadCanvasNodes.
+    private const int ElReadSize = 0x340;
+    private readonly byte[] _elBuf = new byte[ElReadSize];
+    private byte[] _childPtrBuf = Array.Empty<byte>();
 
     // Atlas CONNECTION GRAPH (grid coord → neighbour grid coords), read from the canvas's edge vector
     // (Poe2.AtlasGraph.ConnectionsVec). Static while the atlas is open, so it's read once per canvas and
@@ -382,33 +390,51 @@ public sealed class Poe2Atlas
         var matched = 0;
         var resolveBudget = 80;  // cap new content resolves per call → spread the first-read cost
         var allCached = true;    // false if any node was left unresolved this pass (budget spent)
+        // BULK READS — this runs every world tick (30 Hz) while the atlas is open, so syscall count is
+        // the whole cost. ONE read pulls the entire child-pointer array; then ONE 0x340-byte read per
+        // element covers vtable(0x00) through Completion(0x339), replacing the former ~15 per-field
+        // reads per node (+1 per child pointer) — ~8× fewer NtReadVirtualMemory calls on a full atlas.
+        var ptrBytes = (int)(count * 8);
+        if (_childPtrBuf.Length < ptrBytes) _childPtrBuf = new byte[ptrBytes];
+        if (_reader.TryReadBytes(first, _childPtrBuf.AsSpan(0, ptrBytes)) < ptrBytes) { Invalidate(); return false; }
         for (long i = 0; i < count; i++)
         {
-            var el = Ptr(first + (nint)(i * 8));
-            if (el == 0 || Ptr(el) != _nodeVtable) continue;     // vtable == node class
+            var el = (nint)BitConverter.ToInt64(_childPtrBuf, (int)(i * 8));
+            if (el == 0 || !IsCanon(el)) continue;
+            if (_reader.TryReadBytes(el, _elBuf) < ElReadSize) continue;
+            if ((nint)BitConverter.ToInt64(_elBuf, 0) != _nodeVtable) continue;     // vtable == node class
             matched++;
-            _reader.TryReadStruct<uint>(el + Poe2.AtlasNode.MapNodeId, out var id);
-            _reader.TryReadStruct<uint>(el + Poe2.AtlasNode.Content, out var content);
-            _reader.TryReadStruct<byte>(el + Poe2.AtlasNode.State, out var state);
-            _reader.TryReadStruct<byte>(el + Poe2.AtlasNode.Biome, out var biome);
-            _reader.TryReadStruct<byte>(el + Poe2.AtlasNode.Flags, out var flags);
-            _reader.TryReadStruct<byte>(el + Poe2.AtlasNode.Completion, out var compl);
-            _reader.TryReadStruct<float>(el + Poe2.UiElement.RelativePos, out var x);
-            _reader.TryReadStruct<float>(el + Poe2.UiElement.RelativePos + 4, out var y);
-            _reader.TryReadStruct<float>(el + Poe2.UiElement.SizeW, out var w);
-            _reader.TryReadStruct<float>(el + Poe2.UiElement.SizeH, out var h);
-            _reader.TryReadStruct<float>(el + 0x130, out var scale);
-            _reader.TryReadStruct<int>(el + Poe2.AtlasNode.GridPos, out var gridX);     // StdTuple2D<int> atlas grid coord
-            _reader.TryReadStruct<int>(el + Poe2.AtlasNode.GridPos + 4, out var gridY); // → the routing graph key
-            _reader.TryReadStruct<uint>(el + Poe2.UiElement.Flags, out var uiFlags);
+            var id      = BitConverter.ToUInt32(_elBuf, Poe2.AtlasNode.MapNodeId);
+            var content = BitConverter.ToUInt32(_elBuf, Poe2.AtlasNode.Content);
+            var state   = _elBuf[Poe2.AtlasNode.State];
+            var biome   = _elBuf[Poe2.AtlasNode.Biome];
+            var flags   = _elBuf[Poe2.AtlasNode.Flags];
+            var compl   = _elBuf[Poe2.AtlasNode.Completion];
+            var x       = BitConverter.ToSingle(_elBuf, Poe2.UiElement.RelativePos);
+            var y       = BitConverter.ToSingle(_elBuf, Poe2.UiElement.RelativePos + 4);
+            var w       = BitConverter.ToSingle(_elBuf, Poe2.UiElement.SizeW);
+            var h       = BitConverter.ToSingle(_elBuf, Poe2.UiElement.SizeH);
+            var scale   = BitConverter.ToSingle(_elBuf, 0x130);
+            var gridX   = BitConverter.ToInt32(_elBuf, Poe2.AtlasNode.GridPos);     // StdTuple2D<int> atlas grid coord
+            var gridY   = BitConverter.ToInt32(_elBuf, Poe2.AtlasNode.GridPos + 4); // → the routing graph key
+            var uiFlags = BitConverter.ToUInt32(_elBuf, Poe2.UiElement.Flags);
             var visible = ((uiFlags >> Poe2.UiElement.FlagVisibleBit) & 1) != 0;
             // The node's content/icon TYPE lives on a nested sigil-icon child (content int 1..~50);
-            // walk first-children a few levels to find it. Lets us classify + match nodes to in-game icons.
-            var iconType = 0; var d = el;
-            for (var lvl = 0; lvl < 5 && d != 0; lvl++)
+            // walk first-children a few levels to find it. Stable while the atlas is open → cached per
+            // element so the walk's extra reads happen once, not every tick.
+            if (!_iconTypeCache.TryGetValue(el, out var iconType))
             {
-                if (_reader.TryReadStruct<uint>(d + Poe2.AtlasNode.Content, out var c) && c is > 0 and < 256) { iconType = (int)c; break; }
-                d = Ptr(Ptr(d + Poe2.UiElement.Children)); // first child = *(*(el+Children))
+                if (content is > 0 and < 256) iconType = (int)content; // level 0, already in the buffer
+                else
+                {
+                    var d = Ptr(Ptr(el + Poe2.UiElement.Children)); // first child = *(*(el+Children))
+                    for (var lvl = 1; lvl < 5 && d != 0; lvl++)
+                    {
+                        if (_reader.TryReadStruct<uint>(d + Poe2.AtlasNode.Content, out var c) && c is > 0 and < 256) { iconType = (int)c; break; }
+                        d = Ptr(Ptr(d + Poe2.UiElement.Children));
+                    }
+                }
+                _iconTypeCache[el] = iconType;
             }
             // Resolved (cached): map name (all nodes) + rolled content tags (nodes with a +0x310 row).
             // Budget-limited per call so the first read doesn't hitch the tick; fills in over a few calls.
@@ -430,7 +456,7 @@ public sealed class Poe2Atlas
     /// defaults only when the full map/content set is available.</summary>
     public bool AllTagsResolved { get; private set; }
 
-    private void Invalidate() { _nodeCanvas = 0; _nodeVtable = 0; _hiddenTicks = 0; _tagCache.Clear(); _graph.Clear(); _graphCanvas = 0; _currentMarker = 0; }
+    private void Invalidate() { _nodeCanvas = 0; _nodeVtable = 0; _hiddenTicks = 0; _tagCache.Clear(); _iconTypeCache.Clear(); _graph.Clear(); _graphCanvas = 0; _currentMarker = 0; }
 
     /// <summary>The player's CURRENT atlas node grid coord (the "player icon" tile), via the marker element
     /// (<see cref="Poe2Offsets.AtlasGraph.CurrentMarkerNodePtr"/>): <c>*(marker+0x300)</c> → current node →
