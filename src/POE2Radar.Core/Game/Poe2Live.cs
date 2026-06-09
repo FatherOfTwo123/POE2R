@@ -399,6 +399,20 @@ public sealed class Poe2Live
                 if (_seenThisWalk.Contains(id)) continue;
                 var miss = _missed.GetValueOrDefault(id) + 1;
                 if (miss > linger) { (drop ??= new()).Add(id); continue; }
+                // DEATH vs BUBBLE-EXIT: a monster that vanishes from the awake map usually DIED (the
+                // corpse leaves the map almost immediately) — only bubble-exit mobs should linger, or a
+                // kill ghosts an alive dot for the whole linger window. Its Life component address is
+                // still cached and the freed struct retains its final values, so ONE tiny read per
+                // lingering monster tells the two apart: same Max as last seen (the memory is still that
+                // Life struct, not recycled garbage) + Current <= 0 ⇒ it died — drop it now. Guarded
+                // against entity-address recycling via _idAt; any read failure/mismatch (memory already
+                // reused, genuinely out of range) falls back to plain lingering, as before.
+                if (last.Category == EntityCategory.Monster && last.HpMax > 0
+                    && _idAt.TryGetValue(last.Address, out var curId) && curId == id
+                    && _lifeAddr.TryGetValue(last.Address, out var life) && life != 0
+                    && _reader.TryReadStruct<VitalStruct>(life + _healthOff, out var lv)
+                    && lv.Max == last.HpMax && lv.Current <= 0)
+                { (drop ??= new()).Add(id); continue; }
                 _missed[id] = miss;
                 dots.Add(last with { Stale = true });
             }

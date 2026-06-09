@@ -44,7 +44,10 @@ without an explicit decision.) This keeps the tool a pure observer.
 - `Game/AobScanner.cs` + `AobPatterns.cs` — pattern scan for the GameState global slot.
 - `Game/LifeValidator.cs` — value-scan to find the Life component by HP (Research `--hp`).
 - `Pathfinding/MapProjection.cs` + `GridConstants.cs` — isometric grid→screen projection and the
-  grid↔world scale (250/23 ≈ 10.87).
+  grid↔world scale (250/23 ≈ 10.87). The projection's Y term takes an optional `deltaWorldZ`
+  (elevation relative to the player): entity dots pass `entity.World.Z − playerZ`, so they track the
+  game map across terrain height steps. The terrain bitmap is still flat-projected — correcting it
+  needs the per-cell height map (tile + subtile heights, offsets unvalidated) baked in iso space.
 
 **Overlay** (`src/POE2Radar.Overlay/`):
 - `RadarApp.cs` — tick loop. Render rate (~144 Hz): live player + render. World rate (~30 Hz):
@@ -70,7 +73,9 @@ without an explicit decision.) This keeps the tool a pure observer.
   (`Poe2.MinimapIcon.NameRowPtr`, GH2/unvalidated) → `EntityDot.IconName`. Validate: `--minimap`.
 - *Entity persistence* (I1/I2) — `Poe2Live` keeps an entity for `RadarSettings.EntityLingerFrames`
   world-ticks after it leaves the awake map (re-emitted as `EntityDot.Stale`), killing bubble-edge
-  flicker (Breach/Delirium). 0 disables. Tunable in the Settings tab.
+  flicker (Breach/Delirium). 0 disables. Tunable in the Settings tab. A vanished MONSTER's cached
+  Life component is re-read once per lingering tick (Max must match its last-seen Max): Current ≤ 0
+  ⇒ it died → dropped immediately instead of ghosting an alive dot for the linger window.
 - *Buffs* (A2) — `Poe2Live.PlayerBuffs` reads the player's status effects (`Poe2.Buffs` /
   `StatusEffectStruct`, GH2/unvalidated). Validate/auto-locate the list offset: `--buffs`.
 - *Preload alerts* (A1) — `Core/Game/PreloadReader.cs` reads the loaded-files table for the current

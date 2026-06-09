@@ -472,7 +472,12 @@ public sealed class OverlayRenderer : IDisposable
             var rule = ctx.Resolve?.Invoke(e);
             if (rule is null || rule.Hide) continue;
 
-            var p = Project(new NumVec2(e.Grid.X, e.Grid.Y), player, center, scale);
+            // Height-corrected projection: the game's map shifts every point by its elevation relative
+            // to the player (the Y term of the iso projection), so an entity on a different terrain
+            // step than the player draws offset on the game map. We already carry each entity's world Z
+            // and the player's, so dots track the game's own icons across height steps for free.
+            // (The terrain bitmap stays flat-projected — correcting it needs the per-cell height map.)
+            var p = Project(new NumVec2(e.Grid.X, e.Grid.Y), player, center, scale, e.World.Z - ctx.PlayerWorldZ);
             _bStyle!.Color = ParseColor(rule.Color, rule.Opacity);
             DrawIcon(rt, rule.Shape, p, rule.Size, _bStyle, filled: true);
             if (!string.IsNullOrEmpty(rule.Label))
@@ -645,10 +650,10 @@ public sealed class OverlayRenderer : IDisposable
 
     private static Color4 WithAlpha(Color4 c, float a) => new(c.R, c.G, c.B, a);
 
-    private static NumVec2 Project(NumVec2 cell, NumVec2 player, NumVec2 center, float scale)
+    private static NumVec2 Project(NumVec2 cell, NumVec2 player, NumVec2 center, float scale, float deltaWorldZ = 0f)
     {
         var d = cell - player;
-        var md = MapProjection.GridDeltaToMapDelta(new GameVec2 { X = d.X, Y = d.Y }, scale);
+        var md = MapProjection.GridDeltaToMapDelta(new GameVec2 { X = d.X, Y = d.Y }, scale, deltaWorldZ);
         return new NumVec2(center.X + md.X, center.Y + md.Y);
     }
 
