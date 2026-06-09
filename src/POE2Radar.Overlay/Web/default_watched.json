@@ -1,0 +1,19 @@
+[
+  {"pattern": "MiscellaneousObjects/Waypoint", "label": "Waypoint", "color": "#00ffff", "enabled": true},
+  {"pattern": "MiscellaneousObjects/Checkpoint", "label": "Checkpoint", "color": "#00ccff", "enabled": true},
+  {"pattern": "MiscellaneousObjects/AreaTransition", "label": "Entrance", "color": "#66ff99", "enabled": true},
+  {"pattern": "MiscellaneousObjects/Stash", "label": "Stash", "color": "#ffcc00", "enabled": true},
+  {"pattern": "MiscellaneousObjects/TownPortal", "label": "Portal", "color": "#cc99ff", "enabled": true},
+  {"pattern": "MiscellaneousObjects/ReturnToLastTownPortal", "label": "Town Portal", "color": "#cc99ff", "enabled": true},
+  {"pattern": "QuestChests", "label": "Quest Chest", "color": "#ff9900", "enabled": true},
+  {"pattern": "QuestObjects", "label": "Quest Object", "color": "#ffff00", "enabled": true},
+  {"pattern": "Monsters/NPC/", "label": "NPC", "color": "#ffdd33", "enabled": true},
+  {"pattern": "ReforgingBench", "label": "Reforging Bench", "color": "#ff66cc", "enabled": true},
+  {"pattern": "TransmutationBench", "label": "Crafting Bench", "color": "#ff66cc", "enabled": true},
+  {"pattern": "StrongBoxes", "label": "Strongbox", "color": "#ff9933", "enabled": true},
+  {"pattern": "Shrine", "label": "Shrine", "color": "#99ff99", "enabled": true},
+  {"pattern": "LeagueRitual", "label": "Ritual", "color": "#ff3333", "enabled": true},
+  {"pattern": "EinharQuestMarker", "label": "Quest Marker", "color": "#ffff33", "enabled": true},
+  {"pattern": "Expedition2/Expedition2Encounter", "label": "Expedition", "color": "#cc8833", "enabled": true},
+  {"pattern": "AbyssJumpInteractable", "label": "Abyss Crack", "color": "#33cccc", "enabled": true}
+]

@@ -1,0 +1,53 @@
+name: release
+
+# Cut a release by pushing a version tag, e.g.:
+#   git tag v0.1.0 && git push origin v0.1.0
+# This builds a self-contained single-file Windows x64 exe and attaches it to a GitHub Release.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch: {}   # allow manual runs from the Actions tab
+
+permissions:
+  contents: write          # needed to create the Release
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Publish self-contained single-file overlay
+        shell: pwsh
+        run: |
+          # Derive the baked-in assembly version straight from the tag (v0.9.0 -> 0.9.0) so the
+          # binary can never disagree with the release it ships in, regardless of the csproj value.
+          $ver = "${{ github.ref_name }}".TrimStart('v')
+          dotnet publish src/POE2Radar.Overlay/POE2Radar.Overlay.csproj `
+            -c Release -r win-x64 --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:EnableCompressionInSingleFile=true `
+            -p:Version=$ver `
+            -p:DebugType=none -p:DebugSymbols=false `
+            -p:Deterministic=true -p:ContinuousIntegrationBuild=true `
+            -o publish
+          Remove-Item publish/*.pdb -Force -ErrorAction SilentlyContinue
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          Copy-Item README.md, LICENSE publish/
+          Compress-Archive -Path publish/* -DestinationPath "POE2Radar-$tag-win-x64.zip" -Force
+
+      - name: Create / update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: POE2Radar-*-win-x64.zip
+          generate_release_notes: true

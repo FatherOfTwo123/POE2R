@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <NoWarn>IL2026,IL2087,IL2091</NoWarn>
+    <AssemblyName>PoeMapViewer</AssemblyName>
+    <RootNamespace>PoeMapViewer</RootNamespace>
+    <Product>PoE Map Viewer</Product>
+    <Description>External memory-reading map/radar overlay for Path of Exile 2</Description>
+    <Company>Local</Company>
+    <!-- App version — bump per release and tag the repo to match (vX.Y.Z). UpdateChecker compares this
+         to the latest GitHub release/tag so the user is told when they're out of date. -->
+    <Version>0.9.0</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\POE2Radar.Core\POE2Radar.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Vortice.Direct2D1" Version="3.*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Web\default_watched.json" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,15 @@
+{
+  "_note": "Preload alerts (A1). Each entry: 'match' is a case-insensitive SUBSTRING tested against every file path the client preloaded for the area you just entered; a hit shows 'name' in 'color'. These are STARTING GUESSES seeded from PoE2 mechanic/content names — many may not match the real preload paths until refined. Capture the actual per-area loaded-file paths with 'POE2Radar.Research --preload' (after the File Root + AreaChangeCounter AOB patterns are rediscovered for PoE2) and edit this list to match what you see. User-editable; rebuild to embed changes.",
+  "entries": [
+    { "match": "/Breach/",        "name": "Breach",        "color": "#A35BFF" },
+    { "match": "/Expedition",     "name": "Expedition",    "color": "#52C7B8" },
+    { "match": "/Ritual/",        "name": "Ritual",        "color": "#E0506E" },
+    { "match": "/Delirium/",      "name": "Delirium",      "color": "#D8D8D8" },
+    { "match": "/Abyss",          "name": "Abyss",         "color": "#C04CC0" },
+    { "match": "/Essence",        "name": "Essence",       "color": "#5BA3FF" },
+    { "match": "/Strongbox",      "name": "Strongbox",     "color": "#E0B341" },
+    { "match": "/Legion",         "name": "Legion",        "color": "#C8A24A" },
+    { "match": "/Harvest",        "name": "Harvest",       "color": "#5CD17A" },
+    { "match": "/Sanctum",        "name": "Sanctum",       "color": "#E8C36A" }
+  ]
+}
