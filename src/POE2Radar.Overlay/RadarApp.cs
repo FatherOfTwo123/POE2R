@@ -235,6 +235,10 @@ public sealed class RadarApp : IDisposable
             _settings.AutoNavPatterns = new(); _settings.Save();
             Console.WriteLine("Migrated auto-path patterns onto display rules' Auto-path flag.");
         }
+        // One-time: restrict the over-broad "Ritual" marker rule to the altar object so the tribute
+        // monsters around a ritual stop inheriting the RITUAL icon (idempotent; see DisplayRules).
+        if (_displayRules.RepairEventMarkerRules())
+            Console.WriteLine("Display rules: restricted the Ritual marker to the altar (was over-tagging tribute monsters).");
         _displayRulesGen = _displayRules.Generation;
         // User-editable overlay on the baked curated landmark table (the "Landmarks" tab). Inject its
         // lookup so the landmark scan honors user edits on top of the shipped community data.

@@ -161,6 +161,44 @@ public sealed class DisplayRules
     }
 
     /// <summary>
+    /// One-time, idempotent repair of over-broad "event marker" rules seeded from older watched
+    /// defaults — the same class of bug the watched-pattern migration fixed for Expedition/Strongbox.
+    /// A bare metadata term like <c>"LeagueRitual"</c> is a substring of the tribute monsters' paths
+    /// (<c>Metadata/Monsters/LeagueRitual/…</c>), so before this fix every ritual mob — even ones
+    /// milling around before the ritual begins — inherited the red RITUAL marker. The fix restricts
+    /// the rule to the altar/marker object the game actually flags (categories Object/Other, the only
+    /// category a <c>LeagueRitual</c> entity that ISN'T a mob falls into), so Monster-category entities
+    /// drop through to the normal monster styling. Only touches a rule still in the unfixed shape (the
+    /// exact term present, no category gate yet), leaving any rule the user has customized alone.
+    /// Returns true if it changed anything.
+    /// </summary>
+    public bool RepairEventMarkerRules()
+    {
+        // over-broad metadata term  →  the entity categories that isolate the marker from the mobs
+        (string term, string[] cats)[] fixes =
+        {
+            ("LeagueRitual", new[] { "Object", "Other" }),
+        };
+        var changed = false;
+        lock (_gate)
+        {
+            foreach (var r in _rules)
+            {
+                if (r.Categories.Count > 0) continue;            // already category-gated → leave it
+                foreach (var (term, cats) in fixes)
+                    if (r.Match.Any(m => string.Equals(m, term, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        r.Categories = new List<string>(cats);
+                        changed = true;
+                        break;
+                    }
+            }
+            if (changed) { Rebuild(); Save(); }
+        }
+        return changed;
+    }
+
+    /// <summary>
     /// Build the default ordered ruleset that REPRODUCES the legacy three-system behavior, used to
     /// seed <c>display_rules.json</c> on first run. Order encodes the old precedence:
     /// <list type="number">
