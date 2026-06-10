@@ -199,6 +199,36 @@ public sealed class DisplayRules
     }
 
     /// <summary>
+    /// One-time, idempotent: add the "Chest · Magic" rule to rulesets seeded before it existed.
+    /// PoE2 breakables (crates/urns/barrels) can roll magic rarity and are real loot the game shows
+    /// on its own minimap, but older default rulesets only drew Rare/Unique chests — so magic chests
+    /// never appeared. Skipped if ANY rule already gates on Chest + Magic (the user has one, possibly
+    /// customized). Inserted right after the "Chest · Rare" rule so precedence mirrors BuildDefault;
+    /// appended if no such rule exists. Returns true if it changed anything.
+    /// </summary>
+    public bool EnsureChestMagicRule(IconStyle style)
+    {
+        lock (_gate)
+        {
+            if (_rules.Any(r => r.Categories.Contains("Chest")
+                                && string.Equals(r.Rarity, "Magic", StringComparison.OrdinalIgnoreCase)))
+                return false;
+            var rule = new DisplayRule
+            {
+                Name = "Chest · Magic", Enabled = style.Enabled,
+                Categories = new() { "Chest" }, Rarity = "Magic",
+                Shape = style.Shape, Color = style.Color, Opacity = style.Opacity, Size = style.Size,
+            };
+            var after = _rules.FindIndex(r => r.Categories.Contains("Chest")
+                                              && string.Equals(r.Rarity, "Rare", StringComparison.OrdinalIgnoreCase));
+            if (after >= 0) _rules.Insert(after + 1, rule);
+            else _rules.Add(rule);
+            Rebuild(); Save();
+        }
+        return true;
+    }
+
+    /// <summary>
     /// Build the default ordered ruleset that REPRODUCES the legacy three-system behavior, used to
     /// seed <c>display_rules.json</c> on first run. Order encodes the old precedence:
     /// <list type="number">
@@ -262,6 +292,7 @@ public sealed class DisplayRules
         Cat("NPC",           "Npc",        null,     st.Npc);
         Cat("Chest · Unique", "Chest", "Unique", st.ChestUnique);
         Cat("Chest · Rare",   "Chest", "Rare",   st.ChestRare);
+        Cat("Chest · Magic",  "Chest", "Magic",  st.ChestMagic);
         Cat("Transition",    "Transition", null,     st.Transition);
 
         // Object/Other entities the game flags as POIs (waypoints, checkpoints, shrines…).

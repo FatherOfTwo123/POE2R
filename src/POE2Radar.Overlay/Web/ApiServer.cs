@@ -538,7 +538,7 @@ public sealed class ApiServer : IDisposable
             var parsed = JsonSerializer.Deserialize<RadarStyles>(el.GetRawText(), Json);
             if (parsed == null) return false;
             foreach (var ic in new[] { parsed.MonsterNormal, parsed.MonsterMagic, parsed.MonsterRare, parsed.MonsterUnique,
-                                       parsed.Player, parsed.Npc, parsed.ChestRare, parsed.ChestUnique, parsed.Transition, parsed.Poi, parsed.Landmark })
+                                       parsed.Player, parsed.Npc, parsed.ChestMagic, parsed.ChestRare, parsed.ChestUnique, parsed.Transition, parsed.Poi, parsed.Landmark })
                 SanitizeIcon(ic);
             parsed.Mechanics ??= new List<MechanicStyle>();
             if (parsed.Mechanics.Count > 24) parsed.Mechanics = parsed.Mechanics.Take(24).ToList();

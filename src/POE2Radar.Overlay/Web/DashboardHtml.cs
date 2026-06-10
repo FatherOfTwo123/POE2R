@@ -618,8 +618,8 @@ let styles=null, hpBars=null, terrain=null;
 const ICON_KEYS=[
   ['monsterNormal','Monster · Normal'],['monsterMagic','Monster · Magic'],
   ['monsterRare','Monster · Rare'],['monsterUnique','Monster · Unique'],
-  ['player','Player'],['npc','NPC'],['chestRare','Chest · Rare'],
-  ['chestUnique','Chest · Unique'],['transition','Transition'],
+  ['player','Player'],['npc','NPC'],['chestMagic','Chest · Magic'],
+  ['chestRare','Chest · Rare'],['chestUnique','Chest · Unique'],['transition','Transition'],
   ['poi','Point of Interest'],['landmark','Landmark']];
 const esc=s=>(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const pct=o=>Math.round((o==null?1:o)*100);

@@ -903,10 +903,18 @@ public sealed class Poe2Live
             // player/ally summons, and invisible effect daemons. Those clutter the map and aren't
             // fight targets. (Friendly/hostile is applied at draw time via Positioned.Reaction.)
             _ when meta.Contains("/Monsters/", StringComparison.Ordinal) && IsNonCombat(meta) => EntityCategory.Other,
-            _ when meta.Contains("/Monsters/", StringComparison.Ordinal)   => EntityCategory.Monster,
+            // Skill-effect carriers (a monster's ground fire trail etc.) also live under /Monsters/
+            // but can't be targeted — they have no Targetable component, which every real fight
+            // target carries (presence only; the component's FIELD offsets are unvalidated, see
+            // Poe2Offsets.Targetable). Without this gate a fire trail draws as a normal enemy dot.
+            _ when meta.Contains("/Monsters/", StringComparison.Ordinal)   =>
+                HasTargetable(entity) ? EntityCategory.Monster : EntityCategory.Other,
             _ when meta.Contains("/Characters/", StringComparison.Ordinal)  => EntityCategory.Player,
-            // Real chests only — exclude breakable props (urns/vases/pots/etc.) under /Chests/.
-            _ when meta.Contains("/Chests", StringComparison.Ordinal) && IsBreakableProp(meta) => EntityCategory.Other,
+            // Breakable props (urns/vases/pots/etc.) under /Chests/ are scenery — UNLESS they rolled
+            // magic+ rarity: PoE2 breakables can be magic/rare loot (shown on the game's own minimap),
+            // so those stay Chest and pick up the chest-rarity display rules.
+            _ when meta.Contains("/Chests", StringComparison.Ordinal) && IsBreakableProp(meta)
+                   && ReadRarity(entity) == Rarity.Normal => EntityCategory.Other,
             _ when meta.Contains("/Chests", StringComparison.Ordinal)       => EntityCategory.Chest,
             _ when meta.Contains("Transition", StringComparison.Ordinal)    => EntityCategory.Transition,
             _ when meta.Contains("/Terrain/", StringComparison.Ordinal)     => EntityCategory.Object,
@@ -939,21 +947,37 @@ public sealed class Poe2Live
         meta.Contains("/Daemon", StringComparison.Ordinal) ||
         meta.Contains("Invisible", StringComparison.Ordinal);
 
+    /// <summary>Whether the entity carries a Targetable component (presence only — the component's
+    /// field offsets are unvalidated, see <c>Poe2Offsets.Targetable</c>, but presence is the reliable
+    /// fight-target discriminator: it's defined per entity type, not per state). A transient read
+    /// failure of the component table reports TRUE (treat as a monster — over-showing is the safe
+    /// direction; Categorize caches its verdict for the area's lifetime).</summary>
+    private bool HasTargetable(nint entity)
+        => !TryResolveComponent(entity, "Targetable", out var t) || t != 0;
+
     /// <summary>Resolve a component address by name via EntityDetails → ComponentLookUp (StdBucket) → ComponentList.</summary>
     private nint ResolveComponent(nint entity, string name)
+        => TryResolveComponent(entity, name, out var comp) ? comp : 0;
+
+    /// <summary>Like <see cref="ResolveComponent"/>, but distinguishes "the table walked clean and the
+    /// component is genuinely absent" (true, comp = 0) from a transient read failure of the component
+    /// table itself (false) — so callers gating behavior on component PRESENCE don't mistake a bad
+    /// frame for absence.</summary>
+    private bool TryResolveComponent(nint entity, string name, out nint comp)
     {
+        comp = 0;
         var details = Ptr(entity + Poe2.Entity.EntityDetailsPtr);
-        if (details == 0) return 0;
+        if (details == 0) return false;
         var lookup = Ptr(details + Poe2.EntityDetails.ComponentLookUpPtr);
-        if (lookup == 0) return 0;
-        if (!_reader.TryReadStruct<StdVector>(entity + Poe2.Entity.ComponentList, out var compList)) return 0;
+        if (lookup == 0) return false;
+        if (!_reader.TryReadStruct<StdVector>(entity + Poe2.Entity.ComponentList, out var compList)) return false;
         var compCount = ((long)compList.Last - (long)compList.First) / 8;
-        if (compCount is <= 0 or > 256) return 0;
+        if (compCount is <= 0 or > 256) return false;
 
         var bFirst = Ptr(lookup + Poe2.ComponentLookUp.NameAndIndexBucket);
-        if (!_reader.TryReadStruct<nint>(lookup + Poe2.ComponentLookUp.NameAndIndexBucket + 8, out var bLast)) return 0;
+        if (!_reader.TryReadStruct<nint>(lookup + Poe2.ComponentLookUp.NameAndIndexBucket + 8, out var bLast)) return false;
         var entries = ((long)bLast - (long)bFirst) / Poe2.ComponentLookUp.EntryStride;
-        if (bFirst == 0 || entries is <= 0 or > 256) return 0;
+        if (bFirst == 0 || entries is <= 0 or > 256) return false;
 
         for (long i = 0; i < entries; i++)
         {
@@ -962,9 +986,10 @@ public sealed class Poe2Live
             if (!_reader.TryReadStruct<int>(e + 8, out var index)) continue;
             if (index < 0 || index >= compCount) continue;
             if (_reader.ReadStringUtf8(namePtr, 32) != name) continue;
-            return Ptr(compList.First + (nint)(index * 8));
+            comp = Ptr(compList.First + (nint)(index * 8));
+            return true;
         }
-        return 0;
+        return true;
     }
 
     /// <summary>Read an entity's metadata path: EntityDetails(+0x08) → name StdWString(+0x08).</summary>

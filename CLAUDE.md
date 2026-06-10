@@ -40,6 +40,10 @@ without an explicit decision.) This keeps the tool a pure observer.
   (rarity, reaction/hostility, POI via MinimapIcon, HP), reads the walkable terrain grid, the map
   UI element (visibility/shift/zoom), tile landmarks, and area/character info. Caches per-entity
   component addresses; cache key is the AreaInstance address (invalidates on zone change).
+  Categorize gates: a /Monsters/ entity is a Monster only if it HAS a Targetable component
+  (presence, not its unvalidated fields — skill-effect carriers like ground fire trails don't);
+  a /Chests/ breakable prop (urn/crate/barrel…) is demoted to Other only at Normal rarity
+  (magic/rare breakables are real loot → stay Chest and match the chest-rarity rules).
 - `Game/GameStructs.cs` — blittable structs (`StdVector`, `Vector2/3`, `VitalStruct`).
 - `Game/AobScanner.cs` + `AobPatterns.cs` — pattern scan for the GameState global slot.
 - `Game/LifeValidator.cs` — value-scan to find the Life component by HP (Research `--hp`).

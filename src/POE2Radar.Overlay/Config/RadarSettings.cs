@@ -331,6 +331,7 @@ public sealed class RadarStyles
     // Other entity categories.
     public IconStyle Player        { get; set; } = new("Circle",  "#4DF2FF", 1.00f, 3.0f);
     public IconStyle Npc           { get; set; } = new("Plus",    "#FFD933", 0.95f, 4.0f);
+    public IconStyle ChestMagic    { get; set; } = new("Square",  "#73A6FF", 0.95f, 4.5f);
     public IconStyle ChestRare     { get; set; } = new("Square",  "#FFD926", 0.95f, 5.0f);
     public IconStyle ChestUnique   { get; set; } = new("Square",  "#FF7300", 0.95f, 5.0f);
     public IconStyle Transition    { get; set; } = new("Diamond", "#66FF99", 0.95f, 4.5f);

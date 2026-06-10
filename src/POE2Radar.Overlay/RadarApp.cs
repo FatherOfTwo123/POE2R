@@ -240,6 +240,10 @@ public sealed class RadarApp : IDisposable
         // monsters around a ritual stop inheriting the RITUAL icon (idempotent; see DisplayRules).
         if (_displayRules.RepairEventMarkerRules())
             Console.WriteLine("Display rules: restricted the Ritual marker to the altar (was over-tagging tribute monsters).");
+        // One-time: rulesets seeded before "Chest · Magic" existed only drew Rare/Unique chests, so
+        // magic chests/crates never appeared (idempotent; see DisplayRules.EnsureChestMagicRule).
+        if (_displayRules.EnsureChestMagicRule(_settings.Styles.ChestMagic))
+            Console.WriteLine("Display rules: added the missing \"Chest · Magic\" rule (magic chests/crates were never drawn).");
         _displayRulesGen = _displayRules.Generation;
         // User-editable overlay on the baked curated landmark table (the "Landmarks" tab). Inject its
         // lookup so the landmark scan honors user edits on top of the shipped community data.

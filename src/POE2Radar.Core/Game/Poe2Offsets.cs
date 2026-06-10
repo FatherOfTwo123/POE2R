@@ -224,7 +224,9 @@ public static class Poe2
         public const int IsBoss = 0x27; // ⚠ INVALID — pointer high-byte, 0 even for a Unique boss; use Rarity
     }
 
-    /// <summary>Targetable component (name confirmed live: "Targetable"). ⚠ The fork's field offsets
+    /// <summary>Targetable component (name confirmed live: "Targetable"). PRESENCE of this component
+    /// is load-bearing: <c>Poe2Live.Categorize</c> demotes /Monsters/ entities WITHOUT it to Other —
+    /// skill-effect carriers (ground fire trails…) aren't fight targets. ⚠ The fork's field offsets
     /// did NOT validate: +0x18 read a constant 144 (0x90) across every monster (2026-06-03), so it is
     /// NOT the IsTargetable bool. Offsets need rediscovery.</summary>
     public static class Targetable
