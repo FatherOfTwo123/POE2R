@@ -948,11 +948,18 @@ public sealed class Poe2Live
 
     /// <summary>True for "/Monsters/" entities that aren't real fight targets (effects / summons).
     /// "/Daemon" (no closing slash) covers both the "/Daemon/" directory and plural "/Daemons/"
-    /// (e.g. LeagueRitual/Daemons/BloodWave — invisible ritual effect carriers, not fight targets).</summary>
+    /// (e.g. LeagueRitual/Daemons/BloodWave — invisible ritual effect carriers, not fight targets).
+    /// "PossesedDaemon" (GGG's spelling; "Possessed…" future-proofed) is the Azmerian-Wisp possession
+    /// daemon (TormentedSpirits/…PossesedDaemon[Player]) that rides a wisp-buffed HOST enemy — it isn't
+    /// the chaseable wisp and isn't its own target, so without this it'd be categorized Monster and the
+    /// "Azmerian Wisp" rule would paint the buffed enemy as a wisp. The free wisp (no "Possesed") stays a
+    /// Monster and keeps its marker; the host enemy draws as its own normal monster.</summary>
     private static bool IsNonCombat(string meta) =>
         meta.Contains("MonsterMods", StringComparison.Ordinal) ||
         meta.Contains("Summoned", StringComparison.Ordinal) ||
         meta.Contains("/Daemon", StringComparison.Ordinal) ||
+        meta.Contains("PossesedDaemon", StringComparison.OrdinalIgnoreCase) ||
+        meta.Contains("PossessedDaemon", StringComparison.OrdinalIgnoreCase) ||
         meta.Contains("Invisible", StringComparison.Ordinal);
 
     /// <summary>Whether the entity carries a Targetable component (presence only — the component's
