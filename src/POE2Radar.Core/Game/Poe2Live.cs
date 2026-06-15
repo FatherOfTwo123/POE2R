@@ -75,6 +75,14 @@ public sealed class Poe2Live
         public bool HasLife => HpMax > 0;
         /// <summary>GameHelper2 rule: friendly when (Reaction &amp; 0x7F) == 1.</summary>
         public bool IsFriendly => (Reaction & 0x7F) == 1;
+        /// <summary>Strict hostile test: (Reaction &amp; 0x7F) == 0 (the validated hostile value, e.g. a
+        /// hostile boss). NOTE: the draw rules' "Hostile" filter still means "not friendly" (the safe
+        /// over-show direction); this strict test exists only to isolate NEUTRAL units below.</summary>
+        public bool IsHostile => (Reaction & 0x7F) == 0;
+        /// <summary>Neutral = neither friendly (1) nor the validated hostile value (0). Unkillable
+        /// ambient critters / passive units carry a distinct reaction here, so a rule can hide them
+        /// without touching real hostiles (reaction 0) or allies/minions (reaction 1).</summary>
+        public bool IsNeutral => !IsFriendly && !IsHostile;
         public float HpFraction => HpMax > 0 ? Math.Clamp((float)HpCur / HpMax, 0f, 1f) : 1f;
     }
 

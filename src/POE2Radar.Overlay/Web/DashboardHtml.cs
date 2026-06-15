@@ -789,7 +789,7 @@ async function loadFilters(){
 /* ── Display Rules: the unified ordered ruleset. The page holds the array, edits it, and re-POSTs
    the WHOLE list on any change (add / remove / reorder / toggle / field) — same pattern styles used. ── */
 const DR_CATS=['Monster','Chest','Npc','Object','Other','Transition','Player','Tile'];
-const DR_SELECTS=[['rarity','Rarity',['Normal','Magic','Rare','Unique']],['reaction','Reaction',['Hostile','Friendly']],
+const DR_SELECTS=[['rarity','Rarity',['Normal','Magic','Rare','Unique']],['reaction','Reaction',['Hostile','Friendly','Neutral']],
   ['life','Life',['Alive','Dead']],['chest','Chest',['Opened','Unopened']],['poi','POI',['Yes','No']],['encounter','Encounter',['Active','Complete']]];
 async function saveDrules(){ try{ await fetch('/api/display-rules',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({rules:drules})}); flashF(); }catch(e){} }
 async function loadDrules(){ try{ const r=await getJSON('/api/display-rules'); drules=r.rules||[]; }catch(e){ drules=[]; } renderDrules(); }

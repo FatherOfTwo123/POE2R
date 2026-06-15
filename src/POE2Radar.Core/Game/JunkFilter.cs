@@ -29,7 +29,6 @@ namespace POE2Radar.Core.Game;
 ///   Invisible daemon / modifier entities — logic carriers with no model:
 ///     "monstermods"       (194) invisible monster-modifier daemons
 ///     "essencemoddaemons" (44)  invisible essence modifiers
-///     "tormentedspirits"  (48)  tormented-spirit daemons
 ///     "/daemon/"          (38+) generic invisible helper entities
 ///   Pets / clones / summon base classes — clutter, not real targets:
 ///     "/pet/"          (14)  pet cosmetics
@@ -70,7 +69,10 @@ public static class JunkFilter
         // Invisible daemon / modifier entities
         "monstermods",
         "essencemoddaemons",
-        "tormentedspirits",
+        // NOTE: "tormentedspirits" was removed — that family is the Azmerian Wisps (real, killable
+        // hostile monsters you chase), not junk. Their invisible possession/effect daemons are
+        // category Other and don't render by default anyway, so hiding the whole family only hid the
+        // real wisps. (See the "Azmerian Wisp" mechanic in RadarStyles.Mechanics.)
         "/daemon/",
         // Pets / clones / summon base classes
         "/pet/",

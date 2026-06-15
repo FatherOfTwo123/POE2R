@@ -161,23 +161,37 @@ public sealed class DisplayRules
     }
 
     /// <summary>
-    /// One-time, idempotent repair of over-broad "event marker" rules seeded from older watched
-    /// defaults — the same class of bug the watched-pattern migration fixed for Expedition/Strongbox.
-    /// A bare metadata term like <c>"LeagueRitual"</c> is a substring of the tribute monsters' paths
-    /// (<c>Metadata/Monsters/LeagueRitual/…</c>), so before this fix every ritual mob — even ones
-    /// milling around before the ritual begins — inherited the red RITUAL marker. The fix restricts
-    /// the rule to the altar/marker object the game actually flags (categories Object/Other, the only
-    /// category a <c>LeagueRitual</c> entity that ISN'T a mob falls into), so Monster-category entities
-    /// drop through to the normal monster styling. Only touches a rule still in the unfixed shape (the
-    /// exact term present, no category gate yet), leaving any rule the user has customized alone.
-    /// Returns true if it changed anything.
+    /// One-time, idempotent repair of over-broad "event marker" rules seeded from older watched/mechanic
+    /// defaults — the same class of bug the migration fixed for Expedition/Strongbox. A bare metadata
+    /// term is a substring of far more than the marker it was meant for, so before this fix the mechanic
+    /// painted unrelated entities with its icon. Each fix restricts the rule to the categories the real
+    /// marker object falls into; where a category gate can't separate marker from noise, it ALSO rewrites
+    /// the term to a precise path prefix. Covered:
+    /// <list type="bullet">
+    /// <item><c>"LeagueRitual"</c>/<c>"Ritual"</c> → Object/Other gate: the bare term hit every tribute
+    ///   mob (<c>Metadata/Monsters/LeagueRitual/…</c>, category Monster), so the whole pack inherited the
+    ///   red RITUAL marker; the altar the game flags is Object/Other.</item>
+    /// <item><c>"Breach"</c> → Monster/Other gate: the bare term hit the neutral Breach NPC
+    ///   (<c>Metadata/Monsters/Breach/NPC/ChayulaFarmer</c> = Ailith, category Npc), drawing it as a
+    ///   purple breach icon; the gate keeps the marker on breach mobs + the breach hand, off the NPC.</item>
+    /// <item><c>"Shrine"</c> → rewrite to <c>"Metadata/Shrines/"</c> + Other gate: the bare term hit the
+    ///   shrine BUFF daemons (<c>Metadata/Monsters/Daemon/Shrines/Shrine*DaemonPlayer</c>) that attach to
+    ///   the player while a shrine buff is up, so a green shrine star rode the player around. Those daemons
+    ///   are category Other just like the real shrine object, so a category gate alone can't exclude them —
+    ///   only the top-level path prefix (the daemons sit a level deeper, under …/Monsters/Daemon/…).</item>
+    /// </list>
+    /// Only touches a rule still in the unfixed shape (the exact term present, no category gate yet),
+    /// leaving any rule the user has customized alone. Returns true if it changed anything.
     /// </summary>
     public bool RepairEventMarkerRules()
     {
-        // over-broad metadata term  →  the entity categories that isolate the marker from the mobs
-        (string term, string[] cats)[] fixes =
+        // over-broad term → (precise replacement or null to keep the term, categories that isolate the marker)
+        (string term, string? replaceWith, string[] cats)[] fixes =
         {
-            ("LeagueRitual", new[] { "Object", "Other" }),
+            ("LeagueRitual", null,                new[] { "Object", "Other" }),
+            ("Ritual",       null,                new[] { "Object", "Other" }),
+            ("Breach",       null,                new[] { "Monster", "Other" }),
+            ("Shrine",       "Metadata/Shrines/", new[] { "Other" }),
         };
         var changed = false;
         lock (_gate)
@@ -185,13 +199,21 @@ public sealed class DisplayRules
             foreach (var r in _rules)
             {
                 if (r.Categories.Count > 0) continue;            // already category-gated → leave it
-                foreach (var (term, cats) in fixes)
-                    if (r.Match.Any(m => string.Equals(m, term, StringComparison.OrdinalIgnoreCase)))
+                foreach (var (term, replaceWith, cats) in fixes)
+                {
+                    var idx = r.Match.FindIndex(m => string.Equals(m, term, StringComparison.OrdinalIgnoreCase));
+                    if (idx < 0) continue;
+                    if (replaceWith != null)
                     {
-                        r.Categories = new List<string>(cats);
-                        changed = true;
-                        break;
+                        if (r.Match.Any(m => string.Equals(m, replaceWith, StringComparison.OrdinalIgnoreCase)))
+                            r.Match.RemoveAt(idx);               // precise term already present → drop the dup
+                        else
+                            r.Match[idx] = replaceWith;          // swap the over-broad term for the precise one
                     }
+                    r.Categories = new List<string>(cats);
+                    changed = true;
+                    break;
+                }
             }
             if (changed) { Rebuild(); Save(); }
         }
@@ -229,6 +251,61 @@ public sealed class DisplayRules
     }
 
     /// <summary>
+    /// One-time, idempotent: add the "Azmerian Wisp" rule to rulesets seeded before it existed. The
+    /// Wildwood/Azmeri wisps are hostile, killable monsters (<c>Metadata/Monsters/TormentedSpirits/…</c>)
+    /// that flee and possess enemies — worth spotting/chasing — but older rulesets drew them as plain red
+    /// "common enemy" dots. Skipped if ANY rule is named "Azmerian Wisp" or already matches the
+    /// TormentedSpirits family (the user may have one, possibly customized). Inserted just ABOVE the first
+    /// hostile-Monster category default so it overrides the generic monster styling (mirroring how the
+    /// seeded mechanics sit above the category defaults in BuildDefault). Returns true if it changed anything.
+    /// </summary>
+    public bool EnsureAzmerianWispRule()
+    {
+        lock (_gate)
+        {
+            if (_rules.Any(r => string.Equals(r.Name, "Azmerian Wisp", StringComparison.OrdinalIgnoreCase)
+                                || r.Match.Any(m => m.Contains("TormentedSpirits", StringComparison.OrdinalIgnoreCase))))
+                return false;
+            var rule = new DisplayRule
+            {
+                Name = "Azmerian Wisp", Enabled = true,
+                Categories = new() { "Monster" }, Match = new() { "TormentedSpirits" },
+                Shape = "Droplet", Color = "#C8FF3C", Opacity = 1f, Size = 7f,
+            };
+            var at = _rules.FindIndex(r => r.Categories.Contains("Monster")
+                                           && string.Equals(r.Reaction, "Hostile", StringComparison.OrdinalIgnoreCase));
+            if (at >= 0) _rules.Insert(at, rule);
+            else _rules.Add(rule);
+            Rebuild(); Save();
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// One-time, idempotent: add the "Hide neutral ambient units" rule to rulesets seeded before it
+    /// existed. Neutral/unkillable ambient critters carry a reaction that's neither hostile (0) nor
+    /// friendly (1), so the "not friendly ⇒ hostile" draw rules paint them as red common enemies. This
+    /// inserts a Normal-rarity-gated hide at the TOP (state-hides band) so it precedes the monster draw
+    /// rules and can never hide a rare/unique/boss. Skipped if ANY rule already uses Reaction "Neutral"
+    /// (the user may have one, possibly disabled/customized). Returns true if it changed anything.
+    /// </summary>
+    public bool EnsureHideNeutralRule()
+    {
+        lock (_gate)
+        {
+            if (_rules.Any(r => string.Equals(r.Reaction, "Neutral", StringComparison.OrdinalIgnoreCase)))
+                return false;
+            _rules.Insert(0, new DisplayRule
+            {
+                Name = "Hide neutral ambient units", Enabled = true,
+                Categories = new() { "Monster" }, Reaction = "Neutral", Rarity = "Normal", Hide = true,
+            });
+            Rebuild(); Save();
+        }
+        return true;
+    }
+
+    /// <summary>
     /// Build the default ordered ruleset that REPRODUCES the legacy three-system behavior, used to
     /// seed <c>display_rules.json</c> on first run. Order encodes the old precedence:
     /// <list type="number">
@@ -251,6 +328,12 @@ public sealed class DisplayRules
         rules.Add(new DisplayRule { Name = "Hide dead monsters",        Categories = new() { "Monster" }, Life = "Dead",     Hide = true });
         rules.Add(new DisplayRule { Name = "Hide opened chests",        Categories = new() { "Chest" },   Chest = "Opened",  Hide = true });
         rules.Add(new DisplayRule { Name = "Hide completed encounters", Encounter = "Complete",                              Hide = true });
+        // Neutral, unkillable ambient critters carry a reaction that's neither hostile (0) nor friendly
+        // (1); without this they fall into the "not friendly ⇒ hostile" bucket and draw as red common
+        // enemies (and get HP bars). Gated to Normal rarity so it can NEVER hide a rare/unique/boss —
+        // those are hostile anyway, but the gate is belt-and-suspenders against any enemy with a
+        // non-standard reaction value (only hostile=0 is validated).
+        rules.Add(new DisplayRule { Name = "Hide neutral ambient units", Categories = new() { "Monster" }, Reaction = "Neutral", Rarity = "Normal", Hide = true });
 
         // 2) Watched highlights (force-draw + label; substring, any category) — before mechanics so
         //    watched still wins, matching the old DrawMap precedence.
@@ -352,7 +435,8 @@ public sealed class DisplayRules
         private readonly bool _raritySet;                  // a rarity filter is present
         private readonly bool _rarityOk;                   // the rarity string parsed to a known enum value
         private readonly Poe2Live.Rarity _rarity;          // required rarity (valid when _raritySet && _rarityOk)
-        private readonly int _reaction, _life, _chest, _poi, _enc; // 0 any / 1 / 2
+        private readonly int _reaction; // 0 any / 1 Friendly / 2 Hostile (= not friendly) / 3 Neutral
+        private readonly int _life, _chest, _poi, _enc; // 0 any / 1 / 2
 
         public Compiled(DisplayRule r)
         {
@@ -381,7 +465,10 @@ public sealed class DisplayRules
             // Precompile rarity to the enum value too (same per-frame allocation-avoidance reason).
             _raritySet = !string.IsNullOrEmpty(r.Rarity);
             _rarityOk = _raritySet && Enum.TryParse<Poe2Live.Rarity>(r.Rarity, ignoreCase: true, out _rarity);
-            _reaction = Code(r.Reaction, "Friendly", "Hostile");
+            _reaction = string.IsNullOrEmpty(r.Reaction) ? 0
+                      : string.Equals(r.Reaction, "Friendly", StringComparison.OrdinalIgnoreCase) ? 1
+                      : string.Equals(r.Reaction, "Hostile",  StringComparison.OrdinalIgnoreCase) ? 2
+                      : string.Equals(r.Reaction, "Neutral",  StringComparison.OrdinalIgnoreCase) ? 3 : 0;
             _life     = Code(r.Life, "Alive", "Dead");
             _chest    = Code(r.Chest, "Opened", "Unopened");
             _poi      = Code(r.Poi, "Yes", "No");
@@ -395,7 +482,8 @@ public sealed class DisplayRules
             if (_match != null && !AnyMatch(e.Metadata)) return false;
             if (_raritySet && (!_rarityOk || e.Rarity != _rarity)) return false;
             if (_reaction == 1 && !e.IsFriendly) return false;
-            if (_reaction == 2 && e.IsFriendly) return false;
+            if (_reaction == 2 && e.IsFriendly) return false;        // Hostile = not friendly (incl. neutral)
+            if (_reaction == 3 && !e.IsNeutral) return false;        // Neutral = neither hostile nor friendly
             if (_life == 1 && !e.IsAlive) return false;
             if (_life == 2 && e.IsAlive) return false;
             if (_chest == 1 && !e.Opened) return false;

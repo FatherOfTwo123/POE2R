@@ -236,14 +236,23 @@ public sealed class RadarApp : IDisposable
             _settings.AutoNavPatterns = new(); _settings.Save();
             Console.WriteLine("Migrated auto-path patterns onto display rules' Auto-path flag.");
         }
-        // One-time: restrict the over-broad "Ritual" marker rule to the altar object so the tribute
-        // monsters around a ritual stop inheriting the RITUAL icon (idempotent; see DisplayRules).
+        // One-time: restrict the over-broad event-marker rules (Ritual/Breach/Shrine) to their real
+        // marker objects so they stop tagging tribute mobs / the Breach NPC / the player-attached shrine
+        // buff daemons (idempotent; see DisplayRules.RepairEventMarkerRules).
         if (_displayRules.RepairEventMarkerRules())
-            Console.WriteLine("Display rules: restricted the Ritual marker to the altar (was over-tagging tribute monsters).");
+            Console.WriteLine("Display rules: restricted Ritual/Breach/Shrine markers to their real objects (were over-tagging mobs/NPCs/buff daemons).");
         // One-time: rulesets seeded before "Chest · Magic" existed only drew Rare/Unique chests, so
         // magic chests/crates never appeared (idempotent; see DisplayRules.EnsureChestMagicRule).
         if (_displayRules.EnsureChestMagicRule(_settings.Styles.ChestMagic))
             Console.WriteLine("Display rules: added the missing \"Chest · Magic\" rule (magic chests/crates were never drawn).");
+        // One-time: rulesets seeded before the "Azmerian Wisp" rule drew the Wildwood/Azmeri wisps
+        // (Metadata/Monsters/TormentedSpirits/…) as plain red common-enemy dots (idempotent).
+        if (_displayRules.EnsureAzmerianWispRule())
+            Console.WriteLine("Display rules: added the \"Azmerian Wisp\" rule (Wildwood wisps were drawn as common enemies).");
+        // One-time: rulesets seeded before the neutral-unit hide drew unkillable neutral ambient
+        // critters as red common enemies (idempotent; Normal-gated so it can't hide rares/uniques).
+        if (_displayRules.EnsureHideNeutralRule())
+            Console.WriteLine("Display rules: added the \"Hide neutral ambient units\" rule (neutral critters were drawn as common enemies).");
         _displayRulesGen = _displayRules.Generation;
         // User-editable overlay on the baked curated landmark table (the "Landmarks" tab). Inject its
         // lookup so the landmark scan honors user edits on top of the shipped community data.

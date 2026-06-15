@@ -731,7 +731,7 @@ public sealed class ApiServer : IDisposable
             .Where(c => c != null).Select(c => c!).Distinct().ToList();
         r.Match = (r.Match ?? new()).Select(m => (m ?? "").Trim()).Where(m => m.Length > 0).Take(32).ToList();
         r.Rarity    = OneOf(r.Rarity, "Normal", "Magic", "Rare", "Unique");
-        r.Reaction  = OneOf(r.Reaction, "Hostile", "Friendly");
+        r.Reaction  = OneOf(r.Reaction, "Hostile", "Friendly", "Neutral");
         r.Life      = OneOf(r.Life, "Alive", "Dead");
         r.Chest     = OneOf(r.Chest, "Opened", "Unopened");
         r.Poi       = OneOf(r.Poi, "Yes", "No");

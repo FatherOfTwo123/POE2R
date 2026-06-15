@@ -144,7 +144,7 @@ public sealed class RadarSettings
             if (loaded.Migrate())
             {
                 loaded.Save();
-                Console.WriteLine("Settings: migrated stale mechanic rules (Expedition/Strongbox category gating).");
+                Console.WriteLine("Settings: migrated stale mechanic rules (Expedition/Strongbox/Ritual/Breach/Shrine gating).");
             }
             return loaded;
         }
@@ -157,12 +157,16 @@ public sealed class RadarSettings
 
     /// <summary>
     /// One-time, idempotent repair of mechanic rules from older builds (loaded verbatim, so they'd
-    /// otherwise keep the bug forever). Both fixes address ungated rules that tagged a mechanic's
-    /// spawned monsters, not just the object:
+    /// otherwise keep the bug forever). Every fix addresses an ungated rule that tagged a mechanic's
+    /// spawned monsters / NPCs / effect-carriers, not just the object the marker is meant for:
     /// <list type="bullet">
     /// <item>Expedition: bare "Expedition" / dead "ExpeditionEncounter" → precise, Other-gated
     ///   "Expedition2/Expedition2Encounter".</item>
     /// <item>Strongbox: add a Chest category gate (the box's Vaal guards carry "...Strongbox").</item>
+    /// <item>Ritual: add an Object/Other gate (the bare term tagged the tribute mobs).</item>
+    /// <item>Breach: add a Monster/Other gate (the bare term tagged the neutral Breach NPC, Ailith).</item>
+    /// <item>Shrine: rewrite bare "Shrine" → "Metadata/Shrines/" + Other gate (the bare term tagged the
+    ///   player-attached shrine buff daemons, which then rode the player around).</item>
     /// </list>
     /// Returns true if anything changed.
     /// </summary>
@@ -176,6 +180,9 @@ public sealed class RadarSettings
         var changed = false;
 
         static bool IsBroadStrongbox(string p) => string.Equals(p, "Strongbox", StringComparison.OrdinalIgnoreCase);
+        static bool Has(MechanicStyle m, string term) =>
+            m.Match.Exists(p => string.Equals(p, term, StringComparison.OrdinalIgnoreCase));
+        static bool Ungated(MechanicStyle m) => m.Categories is null || m.Categories.Count == 0;
 
         if (Styles?.Mechanics is { } mechanics)
             foreach (var m in mechanics)
@@ -202,6 +209,29 @@ public sealed class RadarSettings
                         m.Match.Add("StrongBoxes");
                     m.Categories ??= new List<string>();
                     if (m.Categories.Count == 0) m.Categories.Add("Chest");
+                    changed = true;
+                }
+                // Ritual: bare "Ritual" tagged the tribute mobs (category Monster). Gate it to the altar's
+                // categories (Object/Other). Only touch a still-ungated rule so a user's customization stays.
+                else if (Has(m, "Ritual") && Ungated(m))
+                {
+                    m.Categories = new List<string> { "Object", "Other" }; changed = true;
+                }
+                // Breach: bare "Breach" tagged the neutral Breach NPC (Ailith, category Npc). Gate to the
+                // breach mobs + objects (Monster/Other), which excludes Npc.
+                else if (Has(m, "Breach") && Ungated(m))
+                {
+                    m.Categories = new List<string> { "Monster", "Other" }; changed = true;
+                }
+                // Shrine: bare "Shrine" tagged the player-attached shrine buff daemons
+                // ("Metadata/Monsters/Daemon/Shrines/…"). Rewrite to the top-level "Metadata/Shrines/"
+                // prefix (the real pickups) + an Other gate; the daemons live a level deeper and can't match.
+                else if (Has(m, "Shrine"))
+                {
+                    m.Match.RemoveAll(p => string.Equals(p, "Shrine", StringComparison.OrdinalIgnoreCase));
+                    if (!Has(m, "Metadata/Shrines/")) m.Match.Add("Metadata/Shrines/");
+                    m.Categories ??= new List<string>();
+                    if (m.Categories.Count == 0) m.Categories.Add("Other");
                     changed = true;
                 }
             }
@@ -351,8 +381,17 @@ public sealed class RadarStyles
         // path), and the Other gate keeps it off the monsters. ("ExpeditionEncounter" was also dead —
         // the real path is "Expedition2Encounter" with a digit, so that key matched nothing.)
         new() { Name = "Expedition", Match = new() { "Expedition2/Expedition2Encounter" }, Categories = new() { "Other" }, Shape = "Plus", Color = "#26E6D9", Opacity = 1f, Size = 7f },
-        new() { Name = "Ritual",     Match = new() { "Ritual" },                            Shape = "Star",     Color = "#FF3355", Opacity = 1f, Size = 7f },
-        new() { Name = "Breach",     Match = new() { "Breach" },                            Shape = "Diamond",  Color = "#A64DFF", Opacity = 1f, Size = 7f },
+        // Same over-tagging trap as Expedition: "Ritual" is a substring of every tribute mob's path
+        // ("Metadata/Monsters/LeagueRitual/…", category Monster) and the wendigo/voodoo ritual mobs, so
+        // an ungated rule paints the whole pack with the RITUAL marker. Gate to Object/Other — the only
+        // categories the ritual ALTAR (the thing the game actually flags) falls into — so the monsters
+        // drop through to normal monster styling. Mirrors the v0.9.1 watched-rule repair.
+        new() { Name = "Ritual",     Match = new() { "Ritual" },            Categories = new() { "Object", "Other" },  Shape = "Star",     Color = "#FF3355", Opacity = 1f, Size = 7f },
+        // "Breach" matches the Breach NPC's path too ("Metadata/Monsters/Breach/NPC/ChayulaFarmer" =
+        // Ailith, category Npc), so an ungated rule drew the neutral Breach NPC as a purple breach icon.
+        // Gate to Monster+Other (breach mobs + the breach hand/portal objects) — everything legitimately
+        // "breach" EXCEPT the NPC. (Player/Npc/Transition are excluded by omission.)
+        new() { Name = "Breach",     Match = new() { "Breach" },            Categories = new() { "Monster", "Other" }, Shape = "Diamond",  Color = "#A64DFF", Opacity = 1f, Size = 7f },
         // Match the league-strongbox DIRECTORY only ("Metadata/Chests/StrongBoxes/…") and gate to
         // Chest. The bare "Strongbox" term was too broad twice over: it tagged the box's spawned Vaal
         // guards (…Strongbox monsters — now excluded by the Chest gate) AND ordinary area chests that
@@ -360,6 +399,19 @@ public sealed class RadarStyles
         // "StrongBoxes" hits the real boxes (BasicStrongboxLow lives under it) but not those.
         new() { Name = "Strongbox",  Match = new() { "StrongBoxes" }, Categories = new() { "Chest" }, Shape = "Square", Color = "#FFB300", Opacity = 1f, Size = 6f },
         new() { Name = "Essence",    Match = new() { "Essence" },                           Shape = "Triangle", Color = "#33E0FF", Opacity = 1f, Size = 7f },
-        new() { Name = "Shrine",     Match = new() { "Shrine" },                            Shape = "Star",     Color = "#7DFF7D", Opacity = 1f, Size = 6f },
+        // Azmerian Wisps (Wild/Vivid/Primal/Sacred — Bear/Boar/Ox/Cat/Stag/Wolf/Owl/Primate/Serpent/
+        // Fox/Rabbit) are hostile, killable monsters that FLEE and possess enemies — you want to spot
+        // and chase them, but they render as plain red "common enemy" dots. In PoE2 they're implemented
+        // as "Metadata/Monsters/TormentedSpirits/…" entities; the Monster gate keeps the marker on the
+        // chaseable wisps and off the invisible possession/effect daemons (category Other). NOTE: the
+        // JunkFilter no longer hides this family (it used to, which also hid these real monsters).
+        new() { Name = "Azmerian Wisp", Match = new() { "TormentedSpirits" }, Categories = new() { "Monster" }, Shape = "Droplet", Color = "#C8FF3C", Opacity = 1f, Size = 7f },
+        // The real shrine pickups live at "Metadata/Shrines/…" (Shrine, Darkshrine — category Other). The
+        // bare "Shrine" term ALSO hit the shrine BUFF effect-carriers ("Metadata/Monsters/Daemon/Shrines/
+        // Shrine*DaemonPlayer") that attach to the player while a shrine buff is active — so after grabbing
+        // a shrine, a green shrine star rode the player around. The "Metadata/Shrines/" prefix matches only
+        // the top-level shrine objects (the daemons sit under …/Monsters/Daemon/Shrines/, never reachable
+        // by that prefix), and the Other gate keeps it on the object.
+        new() { Name = "Shrine",     Match = new() { "Metadata/Shrines/" }, Categories = new() { "Other" },            Shape = "Star",     Color = "#7DFF7D", Opacity = 1f, Size = 6f },
     };
 }

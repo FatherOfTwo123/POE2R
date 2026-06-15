@@ -50,6 +50,9 @@ public sealed class WatchedEntities
     ///   of "Expedition2EncounterCrack", so it tagged the detonation-effect objects).</item>
     /// <item>"Strongbox" → "StrongBoxes" (the bare key matched the box's …Strongbox monsters and
     ///   ordinary area chests named "…Strongbox", e.g. KedgeBayChestStrongbox).</item>
+    /// <item>"Shrine" → "Metadata/Shrines/" (the bare key matched the player-attached shrine buff
+    ///   daemons under Metadata/Monsters/Daemon/Shrines/, so a "Shrine" highlight rode the player; the
+    ///   top-level prefix hits only the real shrine pickups).</item>
     /// </list>
     /// Only the EXACT known-bad keys are touched, so any pattern the user customized is left alone.
     /// Returns true if it changed anything.</summary>
@@ -59,6 +62,7 @@ public sealed class WatchedEntities
         {
             ("Expedition2Encounter", "Expedition2/Expedition2Encounter"),
             ("Strongbox",            "StrongBoxes"),
+            ("Shrine",               "Metadata/Shrines/"),
         };
         var changed = false;
         foreach (var (stale, precise) in fixes)
