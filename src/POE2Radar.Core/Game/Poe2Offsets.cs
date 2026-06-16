@@ -373,14 +373,43 @@ public static class Poe2
         public const int Self           = 0x08;  // ✓ self pointer
         public const int Children       = 0x10;  // ✓ StdVector begin (child UiElement ptrs); End @ +0x18
         public const int ChildrenEnd    = 0x18;  // ✓ StdVector end
+        public const int PositionModifier = 0xF0; // StdTuple2D<float>; added to parent pos when Flags bit 0x0A set (GH2 UiElementBase)
         public const int Parent         = 0xB8;  // (community) parent UiElement; true UI root = *(UiRoot+0xB8)
         public const int RelativePos    = 0x118; // ✓ StdTuple2D<float> position relative to parent (varies per atlas node)
+        public const int LocalScaleMul  = 0x130; // float local scale multiplier (also the atlas zoom on node elements)
         public const int Flags          = 0x180; // ✓ uint; IsVisibleLocal = bit 0x0B (toggle-diff: 0x2EF1↔0x26F1)
         public const int FlagVisibleBit = 0x0B;  // ✓ visible bit (set when shown)
+        public const int FlagModifyPosBit = 0x0A; // when set, PositionModifier (+0xF0) is added to the parent pos
+        public const int ScaleIndex     = 0x18A; // byte; selects which axis scale(s) apply (1=v1,2=v2,3=v1×v2). root=3
+        public const int Text           = 0x390; // std::wstring of the element's displayed text (font name @ +0xC8).
+                                                  // Validated live 2026-06-14: every text element (loot tags, skill
+                                                  // rows, runeforge rows) holds its UTF-16 string here.
         public const int SizeW          = 0x288; // ✓ float unscaled width  (atlas node = 40)
         public const int SizeH          = 0x28C; // ✓ float unscaled height (atlas node = 40)
         // Full visibility is hierarchical: an element is shown iff its own bit 0x0B AND every
         // ancestor's bit are set. Walk Parent (+0xB8) up to the root.
+        // Screen geometry (GH2 UiElementBaseFuncs): v1 = winW/2560, v2 = winH/1600 (BaseResolution
+        // 2560×1600). ScaleValue(ScaleIndex, LocalScaleMul): idx1→(v1,v1) idx2→(v2,v2) idx3→(v1,v2),
+        // else (mul,mul). screenPos = unscaledParentChainPos × ScaleValue; screenSize = UnscaledSize × ScaleValue.
+        public const double BaseResW = 2560.0;
+        public const double BaseResH = 1600.0;
+    }
+
+    /// <summary>"Runeshape Combinations" reward panel (rune-crafting league mechanic). The panel is found
+    /// by a UI-FLAGS-FINGERPRINT walk with backtracking from GameUi (= <see cref="InGameState.UiRoot"/>,
+    /// the UiRootStruct the game treats as a UiElement) — child indices drift per patch/restart, the Flags
+    /// "role" bits don't. Each fingerprint is matched with the visible bit (0x800) masked out; step 0
+    /// (window-container) must be VISIBLE = panel open. Validated live 2026-06-14 (Research --runeforge);
+    /// re-validate per patch (the probe prints GameUi child flags on resolve-fail for re-fingerprinting).</summary>
+    public static class Runeforge
+    {
+        // window-container (gate) → … → recipes-container. (visible bit masked out before compare.)
+        public static readonly uint[] PanelFlagFingerprints =
+            { 0x00462EF1, 0x00502EF3, 0x00502EF7, 0x00542EF1, 0x00502EF1 };
+        public const int GateStep = 0;       // the window-container; its visible bit gates panel-open
+        public const int ViewportStep = 2;   // this hop's element holds the scroll offset (+0x120)
+        public const int ScrollOffset = 0x120; // StdTuple2D<float> viewport scroll offset
+        public const int NameWString = 0x390;  // visible row's kid[0]: inline std::wstring "<count>x <name>"
     }
 
     /// <summary>Atlas map-node UiElement (a subclass with its own vtable; ~1200+ instances live in the

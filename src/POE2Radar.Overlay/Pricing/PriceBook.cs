@@ -140,7 +140,7 @@ public sealed class PriceBook
             var lg = Uri.EscapeDataString(league);
 
             foreach (var cat in CurrencyCategories.Distinct())
-                await FetchCurrencyCategoryAsync(lg, cat, byName).ConfigureAwait(false);
+                await FetchCurrencyCategoryAsync(lg, cat, byArt, byName).ConfigureAwait(false);
             foreach (var cat in UniqueCategories.Distinct())
                 await FetchUniqueCategoryAsync(lg, cat, byArt, byName).ConfigureAwait(false);
 
@@ -205,7 +205,8 @@ public sealed class PriceBook
         }
     }
 
-    private async Task FetchCurrencyCategoryAsync(string leagueEscaped, string category, Dictionary<string, PricedItem> byName)
+    private async Task FetchCurrencyCategoryAsync(string leagueEscaped, string category,
+        Dictionary<string, PricedItem> byArt, Dictionary<string, PricedItem> byName)
     {
         var page = 1; var pages = 1;
         while (page <= pages && page <= 20)
@@ -224,7 +225,13 @@ public sealed class PriceBook
                     var price = it.CurrentPrice ?? 0;
                     var name = it.Text;
                     if (price <= 0 || string.IsNullOrWhiteSpace(name)) continue;
-                    Upsert(byName, Normalize(name), new PricedItem(name.Trim(), price, it.CurrentQuantity ?? 0, category));
+                    var item = new PricedItem(name.Trim(), price, it.CurrentQuantity ?? 0, category);
+                    Upsert(byName, Normalize(name), item);
+                    // Currency/rune/essence/etc. rows ALSO carry an IconUrl, so index them by art basename
+                    // too — that's the bridge a DROPPED stackable's RenderItem .dds basename resolves
+                    // through (same as uniques), so ground-item pricing works for these categories.
+                    var art = ArtBasenameFromIcon(it.IconUrl);
+                    if (art != null) Upsert(byArt, art, item);
                 }
             }
             catch { break; }

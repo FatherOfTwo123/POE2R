@@ -32,11 +32,20 @@ public readonly record struct HpBarTarget(Vector3 World, float Frac, float Width
 /// the resolved unique name (from the art→price map — shown even for UNIDENTIFIED items), <see cref="Value"/>
 /// the formatted price, and <see cref="Highlight"/> whether it's above the configured value threshold
 /// (→ border). Built at world rate in RadarApp; the renderer only projects + draws.</summary>
-public readonly record struct ItemLabel(Vector3 World, string Name, string Value, bool Highlight);
+/// <summary><see cref="ShowName"/> = draw the resolved item NAME above the value (with a backing panel) —
+/// used for UNIDENTIFIED uniques, whose name the game hides. When false (identified uniques, runes,
+/// essences, currency…) only the value is drawn in a compact chip. <see cref="Highlight"/> adds a border.</summary>
+public readonly record struct ItemLabel(Vector3 World, string Name, string Value, bool Highlight, bool ShowName);
 
 /// <summary>One atlas node to highlight. <see cref="X"/>/<see cref="Y"/> are the node's canvas-space
 /// RelativePos; the renderer projects them to screen via the atlas transform (scale + offset).</summary>
 public readonly record struct AtlasMark(float X, float Y, bool Selected, bool HasContent, bool Visited, bool Unlocked, int Biome, int IconType, string? Label = null, string? Color = null, bool Arrow = false);
+
+/// <summary>One priced reward row in the "Runeshape Combinations" panel. <see cref="X"/>/<see cref="Y"/>/
+/// <see cref="W"/>/<see cref="H"/> are the reward row's SCREEN rect (already scaled, from Poe2Runeforge);
+/// the renderer draws <see cref="Text"/> (e.g. "5.4 ex") in <see cref="Color"/> (packed 0xAARRGGBB) just
+/// outside the row's right edge. Built at world rate in RadarApp; the renderer only positions + draws.</summary>
+public readonly record struct RuneLabel(float X, float Y, float W, float H, string Text, uint Color);
 
 /// <summary>What the PoE2 renderer needs each frame. Built fresh by <see cref="RadarApp"/>.</summary>
 public sealed record RenderContext(
@@ -122,4 +131,6 @@ public sealed record RenderContext(
     // exists; AtlasRoute (≥2 pts) is the graph polyline, else the renderer draws a straight START→END line.
     NumVec2? AtlasStart = null,
     NumVec2? AtlasEnd = null,
-    IReadOnlyList<NumVec2>? AtlasRoute = null);
+    IReadOnlyList<NumVec2>? AtlasRoute = null,
+    // Priced "Runeshape Combinations" reward labels (screen-space; drawn whenever the panel is open).
+    IReadOnlyList<RuneLabel>? RuneLabels = null);

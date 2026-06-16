@@ -155,6 +155,7 @@ internal static class DashboardHtml
   }
   .chip:hover{border-color:var(--gold-deep); color:var(--ink)}
   .chip.on{background:var(--gold-deep); border-color:var(--gold); color:#1a140a; font-weight:600}
+  .chips{display:flex; flex-wrap:wrap; gap:6px; margin:4px 0 12px}
   input[type=search]{
     font-family:inherit; font-size:12px; color:var(--ink); background:#0c0a07;
     border:1px solid var(--line); border-radius:2px; padding:7px 12px; min-width:200px; flex:1;
@@ -546,6 +547,32 @@ internal static class DashboardHtml
             <div class="row"><div class="rl hint-row">Adjust here &mdash; changes apply live (no in-game hotkeys).</div></div>
           </div></div>
           </div>
+          <div class="card">
+            <h3>Ground Item Pricing <span class="tag">&middot; poe2scout</span></h3>
+            <div class="row"><div class="rl">Enabled<small>draw value labels over dropped items</small></div>
+              <label class="sw"><input type="checkbox" data-gi="enabled"><span class="track"></span><span class="knob"></span></label></div>
+            <div class="row"><div class="rl hint-row">Show a label for these categories:</div></div>
+            <div class="chips" id="giCats">
+              <span class="chip" data-gicat="Uniques">Uniques</span>
+              <span class="chip" data-gicat="Runes">Runes</span>
+              <span class="chip" data-gicat="Essences">Essences</span>
+              <span class="chip" data-gicat="Currency">Currency</span>
+              <span class="chip" data-gicat="Fragments">Fragments</span>
+              <span class="chip" data-gicat="Breach">Breach</span>
+              <span class="chip" data-gicat="Ritual">Ritual</span>
+              <span class="chip" data-gicat="Delirium">Delirium</span>
+              <span class="chip" data-gicat="Expedition">Expedition</span>
+            </div>
+            <div class="row"><div class="rl">Unique min value<small>hide uniques worth less than this (Ex)</small></div>
+              <input class="numin" type="number" step="0.1" min="0" data-gi="uniqueMinEx"></div>
+            <div class="row"><div class="rl">Highlight threshold<small>border/emphasis at or above this value (Ex)</small></div>
+              <input class="numin" type="number" step="1" min="0" data-gi="highlightMinEx"></div>
+            <div class="row"><div class="rl">Min listing quantity<small>skip low-confidence mislistings</small></div>
+              <input class="numin" type="number" step="1" min="0" data-gi="minQuantity"></div>
+            <div class="row"><div class="rl">League<small>blank = auto-detect current</small></div>
+              <input class="numin" type="text" data-gi="league" style="width:150px"></div>
+            <div class="row"><div class="rl hint-row">Uniques show the value always; the resolved NAME shows only while the item is <i>unidentified</i>. Runes / essences / currency show the value only.</div></div>
+          </div>
         </div>
         <div style="margin-top:18px; height:14px"><span class="saved" id="savedMsg">&#10003; saved to config</span></div>
       </section>
@@ -596,8 +623,37 @@ async function loadSettings(){
     });
     hpBars = s.hpBars || null;
     terrain = s.terrain || null;
-    renderHpBars(); renderTerrain();
+    gi = s.groundItems || {};
+    renderHpBars(); renderTerrain(); renderGround();
   }catch(e){}
+}
+
+/* ── ground-item pricing (nested object: POST the whole {groundItems}) ── */
+let gi = null;
+function renderGround(){
+  if(!gi) return;
+  $$('[data-gi]').forEach(el=>{
+    const k=el.dataset.gi;
+    if(el.type==='checkbox') el.checked=!!gi[k];
+    else if(gi[k]!==undefined && gi[k]!==null) el.value=gi[k];
+  });
+  const cats=new Set((gi.categories||[]).map(c=>(c||'').toLowerCase()));
+  $$('#giCats .chip').forEach(c=>c.classList.toggle('on', cats.has(c.dataset.gicat.toLowerCase())));
+}
+function saveGround(){ if(gi) saveSetting('groundItems', gi); }
+function wireGround(){
+  $$('[data-gi]').forEach(el=>{
+    const k=el.dataset.gi;
+    if(el.type==='checkbox') el.onchange=()=>{ gi=gi||{}; gi[k]=el.checked; saveGround(); };
+    else if(el.type==='text') el.onchange=()=>{ gi=gi||{}; gi[k]=el.value.trim(); saveGround(); };
+    else el.onchange=()=>{ const v=parseFloat(el.value); if(!isNaN(v)){ gi=gi||{}; gi[k]=v; saveGround(); } };
+  });
+  $$('#giCats .chip').forEach(c=>c.onclick=()=>{
+    c.classList.toggle('on');
+    gi=gi||{};
+    gi.categories=$$('#giCats .chip.on').map(x=>x.dataset.gicat);
+    saveGround();
+  });
 }
 async function saveSetting(key,val){
   try{
@@ -1203,7 +1259,7 @@ async function checkVersion(){
   }catch(e){}
 }
 
-wireSettings(); wireHpBars(); wireTerrain();
+wireSettings(); wireHpBars(); wireTerrain(); wireGround();
 loadIcons().then(()=>{ loadSettings(); loadFilters(); }); // Rules is the default tab
 tick(); setInterval(tick, 1000);
 refreshAlerts(); setInterval(refreshAlerts, 1500);

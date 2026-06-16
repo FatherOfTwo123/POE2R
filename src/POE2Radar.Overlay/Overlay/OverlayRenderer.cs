@@ -123,6 +123,11 @@ public sealed class OverlayRenderer : IDisposable
             {
                 _legendRowRects.Clear(); // not active/in-game: no stale click rects
             }
+
+            // Rune-crafting reward prices: screen-space labels drawn on top of whatever's below (radar
+            // or atlas), gated only on the panel being open (RuneLabels populated). No-op otherwise.
+            if (ctx.Active && ctx.InGame)
+                DrawRuneforge(rt, ctx);
         }
         finally { rt.EndDraw(); }
         _window.Present();
@@ -323,25 +328,57 @@ public sealed class OverlayRenderer : IDisposable
             var sy = (0.5f - cy/cw/2f) * H;
             if (sx < 0 || sx > W || sy < 0 || sy > H) continue;
 
-            // Two stacked lines: NAME (gold if highlighted, else white) over VALUE (dim). Sized to fit.
-            var text = $"{it.Name}\n{it.Value}";
-            var halfW = MathF.Max(48f, 4.5f * MathF.Max(it.Name.Length, it.Value.Length + 3));
-            const float halfH = 19f;
-            var panel = new Vortice.RawRectF(sx - halfW, sy - halfH, sx + halfW, sy + halfH);
-            rt.FillRectangle(panel, _bPanel!);
-            if (it.Highlight)
+            if (it.ShowName)
             {
-                _bStyle!.Color = ColItemHi;
-                rt.DrawRectangle(panel, _bStyle, 2.5f);
+                // UNIDENTIFIED unique: two stacked lines — resolved NAME over VALUE — on a backing panel
+                // (the game hides the unID name, so we reveal it). Border when high-value.
+                var text = $"{it.Name}\n{it.Value}";
+                var halfW = MathF.Max(48f, 4.5f * MathF.Max(it.Name.Length, it.Value.Length + 3));
+                const float halfH = 19f;
+                var panel = new Vortice.RawRectF(sx - halfW, sy - halfH, sx + halfW, sy + halfH);
+                rt.FillRectangle(panel, _bPanel!);
+                if (it.Highlight) { _bStyle!.Color = ColItemHi; rt.DrawRectangle(panel, _bStyle, 2.5f); }
+                _bStyle!.Color = it.Highlight ? ColItemHi : ColItemText;
+                rt.DrawText(text, _tf!, new Rect(sx - halfW + 4f, sy - halfH + 2f, sx + halfW - 2f, sy + halfH - 1f),
+                    _bStyle, DrawTextOptions.Clip);
             }
-            _bStyle!.Color = it.Highlight ? ColItemHi : ColItemText;
-            rt.DrawText(text, _tf!, new Rect(sx - halfW + 4f, sy - halfH + 2f, sx + halfW - 2f, sy + halfH - 1f),
-                _bStyle, DrawTextOptions.Clip);
+            else
+            {
+                // Identified uniques + runes/essences/currency/…: VALUE-only compact chip (the game already
+                // shows the item's name on its loot tag). Border when high-value.
+                var halfW = MathF.Max(26f, 4.5f * (it.Value.Length + 1));
+                const float halfH = 11f;
+                var panel = new Vortice.RawRectF(sx - halfW, sy - halfH, sx + halfW, sy + halfH);
+                rt.FillRectangle(panel, _bPanel!);
+                if (it.Highlight) { _bStyle!.Color = ColItemHi; rt.DrawRectangle(panel, _bStyle, 2f); }
+                _bStyle!.Color = it.Highlight ? ColItemHi : ColItemText;
+                rt.DrawText(it.Value, _tf!, new Rect(sx - halfW + 3f, sy - halfH + 1f, sx + halfW - 2f, sy + halfH),
+                    _bStyle, DrawTextOptions.Clip);
+            }
         }
     }
 
     private static readonly Color4 ColItemHi   = new(1.00f, 0.80f, 0.20f, 1.0f);  // gold — above-threshold name + border
     private static readonly Color4 ColItemText = new(0.92f, 0.92f, 0.92f, 1.0f);  // off-white — below-threshold label
+
+    /// <summary>Rune-crafting reward prices: a small value box just outside the right edge of each visible
+    /// reward row in the "Runeshape Combinations" panel. Rects are screen-space (already scaled in
+    /// Poe2Runeforge); text + tier color are precomputed in RadarApp. Screen-space, so no world projection.</summary>
+    private void DrawRuneforge(ID2D1RenderTarget rt, RenderContext ctx)
+    {
+        if (ctx.RuneLabels is not { Count: > 0 } labels) return;
+        const float gap = 8f, boxW = 96f, boxH = 22f;
+        foreach (var r in labels)
+        {
+            var lx = r.X + r.W + gap;             // just past the row's right edge
+            var cy = r.Y + r.H * 0.5f;            // vertically centered on the row
+            var box = new Vortice.RawRectF(lx, cy - boxH * 0.5f, lx + boxW, cy + boxH * 0.5f);
+            rt.FillRectangle(box, _bPanel!);
+            _bStyle!.Color = ColorFromU(r.Color);
+            rt.DrawText(r.Text, _tf!, new Rect(lx + 5f, cy - boxH * 0.5f + 2f, lx + boxW - 2f, cy + boxH * 0.5f - 1f),
+                _bStyle, DrawTextOptions.Clip);
+        }
+    }
 
     /// <summary>Unpack a 0xAARRGGBB color (precomputed in RadarApp.BuildHpSpecs) to a Color4 — no string
     /// parse or allocation, runs per bar per frame.</summary>

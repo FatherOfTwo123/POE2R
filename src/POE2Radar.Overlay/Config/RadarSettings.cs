@@ -360,8 +360,13 @@ public sealed class GroundItemSettings
 {
     public bool Enabled { get; set; } = true;
     public double HighlightMinEx { get; set; } = 10.0;   // border when value ≥ this many Exalted
+    public double UniqueMinEx { get; set; } = 5.0;       // only label uniques worth ≥ this many Exalted (the
+                                                         // ground overlay now shows ONLY unidentified uniques)
     public int MinQuantity { get; set; } = 2;            // skip listings with fewer than N for sale (confidence)
     public string League { get; set; } = "";             // blank = auto-detect current league
+    // Which item-value categories get a ground label. Group keys map to poe2scout categories (see
+    // RadarApp.CategoryGroup). Default: uniques + the common stackables. Empty list ⇒ nothing shows.
+    public List<string> Categories { get; set; } = new() { "Uniques", "Runes", "Essences", "Currency" };
 }
 
 /// <summary>
