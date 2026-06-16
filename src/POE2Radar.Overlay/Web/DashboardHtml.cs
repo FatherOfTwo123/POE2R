@@ -344,6 +344,10 @@ internal static class DashboardHtml
    style="display:none;align-items:center;gap:10px;padding:9px 16px;margin:0;background:#e0b341;color:#1a1400;font-weight:600;text-decoration:none">
   <span>&#x2B06; Update available</span><span id="updateMsg" style="font-weight:400"></span><span style="margin-left:auto;text-decoration:underline">Download &rarr;</span>
 </a>
+<a id="upstreamBanner" href="#" target="_blank" rel="noopener" hidden
+   style="display:none;align-items:center;gap:10px;padding:9px 16px;margin:0;background:#5a4fcf;color:#fff;font-weight:600;text-decoration:none">
+  <span>&#x21F1; Upstream ahead</span><span id="upstreamMsg" style="font-weight:400"></span><span style="margin-left:auto;text-decoration:underline">View Sikaka/POE2Radar &rarr;</span>
+</a>
 <div class="shell">
   <header>
     <div class="mark">
@@ -1252,9 +1256,15 @@ async function checkVersion(){
   try{
     const v=await getJSON('/api/version');
     if(v && v.updateAvailable){
-      const b=$('#updateBanner'); if(!b) return;
-      const m=$('#updateMsg'); if(m) m.textContent=' — '+(v.latest||'')+' (you have v'+(v.current||'?')+')';
-      b.href=v.url||'#'; b.hidden=false; b.style.display='flex';
+      const b=$('#updateBanner');
+      if(b){ const m=$('#updateMsg'); if(m) m.textContent=' — '+(v.latest||'')+' (you have v'+(v.current||'?')+')';
+             b.href=v.url||'#'; b.hidden=false; b.style.display='flex'; }
+    }
+    // Separate, informational banner: upstream (Sikaka) is ahead of what this fork has merged.
+    if(v && v.upstreamAhead){
+      const ub=$('#upstreamBanner');
+      if(ub){ const um=$('#upstreamMsg'); if(um) um.textContent=' — Sikaka is at '+(v.upstreamLatest||'')+', this fork is v'+(v.current||'?');
+              ub.href=v.upstreamUrl||'#'; ub.hidden=false; ub.style.display='flex'; }
     }
   }catch(e){}
 }

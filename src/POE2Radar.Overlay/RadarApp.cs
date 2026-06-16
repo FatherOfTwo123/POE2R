@@ -341,6 +341,9 @@ public sealed class RadarApp : IDisposable
                 Console.WriteLine($"\n*** UPDATE AVAILABLE: {u.Latest} — you have v{u.Current}. Download: {u.Url} ***\n");
             else
                 Console.WriteLine($"POE2Radar v{u.Current}" + (u.Latest != null ? " (up to date)." : " (update check unavailable)."));
+            // Separate, informational: upstream (Sikaka) has shipped a newer version than we've merged.
+            if (u.UpstreamAhead)
+                Console.WriteLine($"\n*** UPSTREAM AHEAD: Sikaka/POE2Radar is at {u.UpstreamLatest} — this fork (v{u.Current}) is behind. Consider re-running the upstream sync. {u.UpstreamUrl} ***\n");
         });
     }
 
@@ -367,6 +370,10 @@ public sealed class RadarApp : IDisposable
             latest = u?.Latest,
             updateAvailable = u?.UpdateAvailable ?? false,
             url = u?.Url ?? UpdateChecker.ReleasesPage,
+            // Informational: upstream (Sikaka) shipped a newer version than this fork has merged.
+            upstreamLatest = u?.UpstreamLatest,
+            upstreamAhead = u?.UpstreamAhead ?? false,
+            upstreamUrl = u?.UpstreamUrl is { Length: > 0 } uu ? uu : UpdateChecker.UpstreamReleasesPage,
         };
     }
 
