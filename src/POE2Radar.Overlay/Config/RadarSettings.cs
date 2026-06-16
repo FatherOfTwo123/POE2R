@@ -111,6 +111,9 @@ public sealed class RadarSettings
     // ── Walkable-terrain bitmap colors/transparency. Defaults reproduce the old hardcoded wash. ──
     public TerrainSettings Terrain { get; set; } = new();
 
+    // ── Ground-item value overlay (unique drops): name + price over the loot icon, border if above value. ──
+    public GroundItemSettings GroundItems { get; set; } = new();
+
     private static readonly JsonSerializerOptions Json = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -344,6 +347,21 @@ public sealed class TerrainSettings
     public float InteriorOpacity { get; set; } = 0.118f; // → 30/255
     public string EdgeColor { get; set; } = "#3CDCFF";
     public float EdgeOpacity { get; set; } = 0.706f;      // → 180/255
+}
+
+/// <summary>
+/// Ground-item value overlay: draws a dropped UNIQUE's resolved name + Exalted price over its in-world
+/// loot icon (so unidentified uniques reveal what they are), with a border when the value clears
+/// <see cref="HighlightMinEx"/>. Prices come from the PriceBook (poe2scout). <see cref="League"/> blank =
+/// auto-detect the current league; set it to override. <see cref="MinQuantity"/> filters low-volume
+/// mislistings out of the overlay.
+/// </summary>
+public sealed class GroundItemSettings
+{
+    public bool Enabled { get; set; } = true;
+    public double HighlightMinEx { get; set; } = 10.0;   // border when value ≥ this many Exalted
+    public int MinQuantity { get; set; } = 2;            // skip listings with fewer than N for sale (confidence)
+    public string League { get; set; } = "";             // blank = auto-detect current league
 }
 
 /// <summary>

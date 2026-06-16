@@ -27,6 +27,13 @@ public readonly record struct SelectedPath(int ColorSlot, IReadOnlyList<(int x, 
 /// so the bar tracks the moving monster smoothly. The renderer just projects + fills.</summary>
 public readonly record struct HpBarTarget(Vector3 World, float Frac, float Width, uint Fill, float BorderWidth, uint Border);
 
+/// <summary>A priced ground-item label drawn over the in-world loot icon. <see cref="World"/> is the
+/// dropped item's world position (projected via the camera matrix, like HP bars). <see cref="Name"/> is
+/// the resolved unique name (from the art→price map — shown even for UNIDENTIFIED items), <see cref="Value"/>
+/// the formatted price, and <see cref="Highlight"/> whether it's above the configured value threshold
+/// (→ border). Built at world rate in RadarApp; the renderer only projects + draws.</summary>
+public readonly record struct ItemLabel(Vector3 World, string Name, string Value, bool Highlight);
+
 /// <summary>One atlas node to highlight. <see cref="X"/>/<see cref="Y"/> are the node's canvas-space
 /// RelativePos; the renderer projects them to screen via the atlas transform (scale + offset).</summary>
 public readonly record struct AtlasMark(float X, float Y, bool Selected, bool HasContent, bool Visited, bool Unlocked, int Biome, int IconType, string? Label = null, string? Color = null, bool Arrow = false);
@@ -89,6 +96,8 @@ public sealed record RenderContext(
     IReadOnlyList<HpBarTarget>? HpBarTargets,
     // Walkable-terrain bitmap colors/transparency (mirrored from RadarSettings).
     TerrainSettings TerrainStyle,
+    // Priced ground-item labels (unique drops) to draw over their in-world loot icons. Null/empty → none.
+    IReadOnlyList<ItemLabel>? ItemLabels = null,
     // ── Unified display-rule engine (Phase 1). Resolves an entity to the first matching display rule
     // (or null → not drawn); the rule says hide or how to draw (shape/color/size/label). Replaces the
     // watched/mechanic/category dot decision in DrawMap. Null only if not wired (defensive). ──

@@ -109,6 +109,7 @@ public sealed class OverlayRenderer : IDisposable
             else if (ctx.Active && ctx.InGame)
             {
                 DrawNameplates(rt, ctx);                   // world-space HP bars over hostile mobs
+                DrawItemLabels(rt, ctx);                   // priced unique drops over their loot icons
                 if (ctx.Map.IsVisible)
                     DrawMap(rt, ctx);                      // terrain + dots + on-map path polylines
                 else
@@ -300,6 +301,47 @@ public sealed class OverlayRenderer : IDisposable
             }
         }
     }
+
+    /// <summary>
+    /// Priced unique ground-item labels drawn over their in-world loot icons (projected via the camera
+    /// WorldToScreen matrix, same as HP bars). Each label shows the resolved unique NAME (revealing
+    /// unidentified uniques) + value on a backing panel; items above the value threshold get a gold
+    /// border. Drawn whether the big map is open or not — it's a heads-up loot overlay.
+    /// </summary>
+    private void DrawItemLabels(ID2D1RenderTarget rt, RenderContext ctx)
+    {
+        if (ctx.CameraMatrix is not { } m || ctx.ItemLabels is not { Count: > 0 } labels) return;
+        float W = ctx.WindowWidth, H = ctx.WindowHeight;
+        foreach (var it in labels)
+        {
+            var w = it.World;
+            var cw = w.X*m[3] + w.Y*m[7] + w.Z*m[11] + m[15];
+            if (cw <= 0.0001f) continue;                       // behind the camera
+            var cx = w.X*m[0] + w.Y*m[4] + w.Z*m[8] + m[12];
+            var cy = w.X*m[1] + w.Y*m[5] + w.Z*m[9] + m[13];
+            var sx = (cx/cw/2f + 0.5f) * W;
+            var sy = (0.5f - cy/cw/2f) * H;
+            if (sx < 0 || sx > W || sy < 0 || sy > H) continue;
+
+            // Two stacked lines: NAME (gold if highlighted, else white) over VALUE (dim). Sized to fit.
+            var text = $"{it.Name}\n{it.Value}";
+            var halfW = MathF.Max(48f, 4.5f * MathF.Max(it.Name.Length, it.Value.Length + 3));
+            const float halfH = 19f;
+            var panel = new Vortice.RawRectF(sx - halfW, sy - halfH, sx + halfW, sy + halfH);
+            rt.FillRectangle(panel, _bPanel!);
+            if (it.Highlight)
+            {
+                _bStyle!.Color = ColItemHi;
+                rt.DrawRectangle(panel, _bStyle, 2.5f);
+            }
+            _bStyle!.Color = it.Highlight ? ColItemHi : ColItemText;
+            rt.DrawText(text, _tf!, new Rect(sx - halfW + 4f, sy - halfH + 2f, sx + halfW - 2f, sy + halfH - 1f),
+                _bStyle, DrawTextOptions.Clip);
+        }
+    }
+
+    private static readonly Color4 ColItemHi   = new(1.00f, 0.80f, 0.20f, 1.0f);  // gold — above-threshold name + border
+    private static readonly Color4 ColItemText = new(0.92f, 0.92f, 0.92f, 1.0f);  // off-white — below-threshold label
 
     /// <summary>Unpack a 0xAARRGGBB color (precomputed in RadarApp.BuildHpSpecs) to a Color4 — no string
     /// parse or allocation, runs per bar per frame.</summary>

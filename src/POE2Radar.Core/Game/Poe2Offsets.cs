@@ -211,6 +211,37 @@ public static class Poe2
         public const int ModIdString = 0x0;    // record + this → UTF-16 mod id
     }
 
+    /// <summary>WorldItem component — wraps a dropped item on the ground. ⚠ validated live 2026-06-12
+    /// (Research --item) on a dropped unique staff: the container entity is "Metadata/MiscellaneousObjects/
+    /// WorldItem"; its WorldItem component +0x28 points to the actual item entity (its own
+    /// EntityDetails/ComponentList, metadata "Metadata/Items/...").</summary>
+    public static class WorldItemComponent
+    {
+        public const int ItemEntity = 0x28; // ⚠ → inner item entity
+    }
+
+    /// <summary>RenderItem component (on the inner item entity) — the item's 2D art. ⚠ validated live
+    /// 2026-06-12: +0x28 is a pointer to the UTF-16 .dds resource path (e.g.
+    /// "Art/2DItems/Weapons/.../Uniques/Earthbound.dds"). The basename ("Earthbound") is the price-lookup
+    /// key — it matches poe2scout's IconUrl basename. NB: RenderItem also lists socketed-gem art at later
+    /// offsets, so take the FIRST entry (the item's own art).</summary>
+    public static class RenderItemComponent
+    {
+        public const int ResourcePath = 0x28; // ⚠ → UTF-16 .dds art path
+    }
+
+    /// <summary>Mods component (on items) — rarity lives at a DIFFERENT offset than ObjectMagicProperties.
+    /// ⚠ validated live 2026-06-12 on a dropped unique (read 3 = Unique). Matches GameHelper2's
+    /// ModsAndObjectMagicProperties (Rarity at the sub-struct's +0x94; for the item Mods component the
+    /// sub-struct is at +0x00, so rarity = +0x94). Enum 0=Normal,1=Magic,2=Rare,3=Unique.</summary>
+    public static class ModsComponent
+    {
+        public const int Rarity = 0x94;     // ⚠ int (0=Normal,1=Magic,2=Rare,3=Unique)
+        public const int Identified = 0x90; // ⚠ int — 1 = identified, 0 = unidentified. Validated live
+                                            // 2026-06-12 by diffing an identified unique (Earthbound=1) vs
+                                            // an unidentified one (Keelhaul=0) on the ground.
+    }
+
     /// <summary>Chest component. ✓ OpenState @ +0x168 — the offset is stable, but the 2026-06-06 patch
     /// INVERTED its polarity: now 0 = closed/openable, non-zero = opened/used (was 1=closed/0=opened,
     /// per the 2026-06-03 read). Re-validated live by diffing a rare chest closed-vs-opened (+0x168

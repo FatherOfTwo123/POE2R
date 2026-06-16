@@ -54,6 +54,8 @@ public sealed class ApiServer : IDisposable
     // Persistent catalog of every monster affix-mod id ever seen — the vocabulary the rule editor
     // browses to author a Mods matcher. Read-only provider supplied by RadarApp.
     private readonly Func<IReadOnlyList<string>> _knownMods;
+    // PriceBook status provider ({league, count, status, exPerDivine, exPerChaos}) for the dashboard.
+    private readonly Func<object>? _prices;
     // Atlas map-data provider (catalog + current-region map set). Read-only, computed on demand (it
     // scans memory + caches), returns a JSON-ready object. Null when atlas reading is unavailable.
     private readonly Func<object>? _atlas;
@@ -78,6 +80,7 @@ public sealed class ApiServer : IDisposable
         LandmarkStore landmarkStore,
         Func<IReadOnlyList<string>> tilesProvider,
         Func<IReadOnlyList<string>> knownModsProvider,
+        Func<object>? pricesProvider = null,
         Func<object>? atlasProvider = null,
         Action<IReadOnlyList<long>>? atlasSelect = null,
         Action<IReadOnlyList<(string tag, string color, bool track, bool arrow)>>? atlasHighlight = null,
@@ -98,6 +101,7 @@ public sealed class ApiServer : IDisposable
         _landmarkStore = landmarkStore;
         _tiles = tilesProvider;
         _knownMods = knownModsProvider;
+        _prices = pricesProvider;
         _listener.Prefixes.Add($"http://localhost:{port}/");
     }
 
@@ -225,7 +229,7 @@ public sealed class ApiServer : IDisposable
                         id = e.Id, addr = $"0x{e.Address:X}", category = e.Category.ToString(), metadata = e.Metadata,
                         name = EntityNameResolver.Shared.ResolveOrShorten(e.Metadata),
                         poi = e.Poi, iconName = e.IconName, iconComplete = e.IconComplete, opened = e.Opened, reaction = e.Reaction, friendly = e.IsFriendly, rarity = e.Rarity.ToString(),
-                        mods = e.ModList,
+                        mods = e.ModList, itemArt = e.ItemArt,
                         x = e.Grid.X, y = e.Grid.Y, hpCur = e.HpCur, hpMax = e.HpMax,
                         alive = e.HpMax <= 0 || e.HpCur > 0, stale = e.Stale,
                         dist = (int)Dist(e.Grid, s.Player),
@@ -341,6 +345,11 @@ public sealed class ApiServer : IDisposable
                 // Every monster affix-mod id ever seen (persistent catalog) — the add-rule picker browses
                 // these so a Mods matcher can target any known aura/buff. Read-only.
                 Write(ctx, 200, JsonSerializer.Serialize(new { mods = _knownMods() }, Json));
+                break;
+
+            case "/api/prices":
+                // PriceBook status — league, loaded count, rates, last fetch (dashboard ground-item panel).
+                Write(ctx, 200, JsonSerializer.Serialize(_prices?.Invoke() ?? new { loaded = false, status = "pricing unavailable" }, Json));
                 break;
 
             case "/api/version":
@@ -487,6 +496,7 @@ public sealed class ApiServer : IDisposable
         styles = _settings.Styles,   // per-item icon shapes/colors/sizes + mechanic overrides
         hpBars = _settings.HpBars,   // monster HP-bar geometry (width/height/offset)
         terrain = _settings.Terrain, // walkable-terrain bitmap colors/transparency
+        groundItems = _settings.GroundItems, // ground-item value overlay (enabled / highlight threshold / league)
     };
 
     /// <summary>Apply only whitelisted radar/visual keys from a posted JSON object; persists on change.</summary>
@@ -529,6 +539,9 @@ public sealed class ApiServer : IDisposable
                     break;
                 case "terrain" when p.Value.ValueKind == JsonValueKind.Object:
                     if (TryParseTerrain(p.Value, out var terrain)) { _settings.Terrain = terrain; applied.Add(p.Name); }
+                    break;
+                case "groundItems" when p.Value.ValueKind == JsonValueKind.Object:
+                    if (TryParseGroundItems(p.Value, out var gi)) { _settings.GroundItems = gi; applied.Add(p.Name); }
                     break;
                 // Anything else (apiPort, unknown keys) is ignored by design.
             }
@@ -633,6 +646,22 @@ public sealed class ApiServer : IDisposable
             parsed.InteriorOpacity = Math.Clamp(parsed.InteriorOpacity, 0f, 1f);
             parsed.EdgeOpacity = Math.Clamp(parsed.EdgeOpacity, 0f, 1f);
             t = parsed;
+            return true;
+        }
+        catch (JsonException) { return false; }
+    }
+
+    private static bool TryParseGroundItems(JsonElement el, out GroundItemSettings g)
+    {
+        g = new GroundItemSettings();
+        try
+        {
+            var parsed = JsonSerializer.Deserialize<GroundItemSettings>(el.GetRawText(), Json);
+            if (parsed == null) return false;
+            parsed.HighlightMinEx = Math.Max(0, parsed.HighlightMinEx);
+            parsed.MinQuantity = Math.Clamp(parsed.MinQuantity, 0, 100000);
+            parsed.League = (parsed.League ?? "").Trim();
+            g = parsed;
             return true;
         }
         catch (JsonException) { return false; }

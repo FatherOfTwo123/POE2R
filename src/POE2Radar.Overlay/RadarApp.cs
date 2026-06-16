@@ -34,10 +34,13 @@ public sealed class RadarApp : IDisposable
     private readonly DisplayRules _displayRules;
     private readonly LandmarkStore _landmarkStore;
     private readonly ModCatalog _modCatalog;
+    private readonly Pricing.PriceBook _priceBook;
+    private readonly List<ItemLabel> _itemLabels = new();   // priced unique drops, rebuilt at world rate
     private int _landmarkGen;
     private int _displayRulesGen;
     private int _landmarkStoreGen;
     private int _appliedClusterGap;
+    private string _appliedLeague = "";
     private nint _areaInstanceForApi;   // current AreaInstance, for the /api/tiles tile-path lookup
     private nint _inGameStateForApi;    // current InGameState, for the /api/atlas node read
     private volatile RadarState _state = RadarState.Empty;
@@ -261,9 +264,11 @@ public sealed class RadarApp : IDisposable
         _live.CuratedLookup = _landmarkStore.Lookup;
         _landmarkStoreGen = _landmarkStore.Generation;
         _modCatalog = new ModCatalog(Path.Combine(ConfigDir, "known_mods.json"));
+        _priceBook = new Pricing.PriceBook(Path.Combine(ConfigDir, "price_cache.json"), _settings.GroundItems.League);
+        _priceBook.RefreshIfDue(); // kick a background fetch on startup if the cache is stale
         Console.WriteLine($"Hidden entities: {_hidden.Count} pattern(s); display rules: {_displayRules.Count}; known mods: {_modCatalog.Count}");
         _api = new ApiServer(() => _state, _settings, GetNavSelection, ToggleNavTarget, ClearNavSelection,
-                             _hidden, _displayRules, _landmarkStore, CurrentTilePaths, () => _modCatalog.All, AtlasJson, SetAtlasSelection,
+                             _hidden, _displayRules, _landmarkStore, CurrentTilePaths, () => _modCatalog.All, PricesJson, AtlasJson, SetAtlasSelection,
                              SetAtlasHighlight, VersionJson, _settings.ApiPort);
         try { _api.Start(); Console.WriteLine($"API on http://localhost:{_settings.ApiPort} (dashboard at /)"); }
         catch (Exception ex) { Console.Error.WriteLine($"API server disabled: {ex.Message}"); }
@@ -283,6 +288,18 @@ public sealed class RadarApp : IDisposable
 
     /// <summary>API (/api/version): this build's version + the latest known on GitHub + a download URL.
     /// Lets the dashboard show an "update available" banner. Null-ish until the async check completes.</summary>
+    /// <summary>PriceBook status for the dashboard ground-item panel.</summary>
+    private object PricesJson() => new
+    {
+        loaded = _priceBook.IsLoaded,
+        league = _priceBook.League,
+        count = _priceBook.ItemCount,
+        exPerDivine = _priceBook.ExPerDivine,
+        exPerChaos = _priceBook.ExPerChaos,
+        lastFetchUtc = _priceBook.LastFetchUtc,
+        status = _priceBook.Status,
+    };
+
     private object VersionJson()
     {
         var u = _update;
@@ -413,6 +430,12 @@ public sealed class RadarApp : IDisposable
                     _live.LandmarkClusterGap = _appliedClusterGap;
                     _live.InvalidateLandmarks();
                 }
+                // Live-apply a changed price league (dashboard/config edit) → re-fetch for that league.
+                if (_settings.GroundItems.League != _appliedLeague)
+                {
+                    _appliedLeague = _settings.GroundItems.League;
+                    _priceBook.SetLeagueOverride(_appliedLeague);
+                }
                 _landmarks = _live.Landmarks(areaInstance); // cached per area in Poe2Live
 
                 // Decide which mobs get an HP bar + their style ONCE here (rule resolve + colour parse) —
@@ -441,6 +464,10 @@ public sealed class RadarApp : IDisposable
                             Console.WriteLine($"Preload alerts ({areaCode}): {string.Join(", ", hits.Select(h => h.Name))}");
                     });
                 }
+
+                // Resolve + price unique ground drops (art basename → name + ex value) for the loot overlay.
+                _priceBook.RefreshIfDue();
+                BuildItemLabels();
 
                 // Atlas marks + F10 route — ReadNodes is cheap when the atlas is closed (it gates on the
                 // atlas panel's visible bit before any whole-tree scan), so this is safe each world tick.
@@ -495,6 +522,7 @@ public sealed class RadarApp : IDisposable
             _preloads = Array.Empty<PreloadCatalog.Hit>();
             if (_hpFrame.Count > 0) _hpFrame.Clear();
             if (_hpSpecs.Count > 0) _hpSpecs.Clear();
+            if (_itemLabels.Count > 0) _itemLabels.Clear();
         }
 
         _state = new RadarState(inGame, _areaHash, areaLevel, map.IsVisible, map.Zoom, player, _entities, _landmarks,
@@ -540,6 +568,7 @@ public sealed class RadarApp : IDisposable
             HpBars: _settings.HpBars,
             HpBarTargets: _hpFrame,
             TerrainStyle: _settings.Terrain,
+            ItemLabels: _itemLabels,
             Resolve: _resolveEntity,
             ResolveTile: _resolveTileDraw,
             AtlasOpen: _atlasOpen,
@@ -640,7 +669,30 @@ public sealed class RadarApp : IDisposable
         }
     }
 
-    /// <summary>Poll overlay hotkeys: F9 quit, F12 dashboard, F6/F7 path targets., F9 quit, F12 dashboard, F6/F7 path targets.
+    /// <summary>
+    /// Build the priced ground-item label set (world rate): for each dropped UNIQUE (its art basename
+    /// read by Poe2Live), look up the name + Exalted value in the PriceBook and emit a label at the item's
+    /// world position. The label shows the resolved unique name (so UNIDENTIFIED uniques reveal what they
+    /// are) + value, and flags Highlight when the value clears the configured threshold (→ border). Gated
+    /// by the GroundItems setting; cheap (a dictionary lookup per drop, no memory reads here).
+    /// </summary>
+    private void BuildItemLabels()
+    {
+        _itemLabels.Clear();
+        var cfg = _settings.GroundItems;
+        if (!cfg.Enabled || !_priceBook.IsLoaded) return;
+        foreach (var e in _entities)
+        {
+            if (e.ItemArt is not { Length: > 0 } art) continue;     // not a (resolved) ground item
+            if (e.Rarity != Poe2Live.Rarity.Unique) continue;        // uniques only (the art map's domain)
+            var p = _priceBook.TryByArt(art);
+            if (p is not { } pr) continue;                           // unknown art → no label (e.g. brand-new unique)
+            if (cfg.MinQuantity > 0 && pr.Quantity < cfg.MinQuantity) continue; // skip low-confidence mislistings
+            _itemLabels.Add(new ItemLabel(e.World, pr.Name, _priceBook.Format(pr.Exalted), pr.Exalted >= cfg.HighlightMinEx));
+        }
+    }
+
+    /// <summary>Poll overlay hotkeys: F9 quit, F12 dashboard, F6/F7 path targets.
     /// Map calibration is web-config-only (no in-game keys, to avoid accidental presses).</summary>
     private void HandleHotkeys()
     {
