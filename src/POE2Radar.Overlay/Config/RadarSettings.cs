@@ -352,7 +352,7 @@ public sealed class TerrainSettings
 /// <summary>
 /// Ground-item value overlay: draws a dropped UNIQUE's resolved name + Exalted price over its in-world
 /// loot icon (so unidentified uniques reveal what they are), with a border when the value clears
-/// <see cref="HighlightMinEx"/>. Prices come from the PriceBook (poe2scout). <see cref="League"/> blank =
+/// <see cref="HighlightMinEx"/>. Prices come from the PriceBook (poe.ninja). <see cref="League"/> blank =
 /// auto-detect the current league; set it to override. <see cref="MinQuantity"/> filters low-volume
 /// mislistings out of the overlay.
 /// </summary>

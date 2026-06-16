@@ -218,9 +218,10 @@ public sealed class Poe2Live
     /// <summary>Player grid position (from the Render component's world position ÷ grid ratio).</summary>
     public System.Numerics.Vector2? PlayerGrid(nint localPlayer) => EntityGrid(localPlayer);
 
-    /// <summary>Player WORLD position (Render component). The Z is the ground-plane height world-space
-    /// drawing projects onto (the local player is culled from the entity list, so the renderer can't
-    /// recover it from there).</summary>
+    /// <summary>Player world position (the Render component's CurrentWorldPosition, incl. Z). RENDER-RATE
+    /// safe — resolves + caches the player's Render component on demand (same path as <see cref="PlayerGrid"/>),
+    /// so the render thread can anchor the guidance line at the player's live feet (and height-correct dots)
+    /// without the local player needing to be in the (world-rate) entity list.</summary>
     public Vector3? PlayerWorld(nint localPlayer) => EntityWorld(localPlayer);
 
     public readonly record struct Vitals(int HpCur, int HpUnreserved, int ManaCur, int ManaUnreserved)
