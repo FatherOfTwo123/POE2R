@@ -456,7 +456,9 @@ public sealed class RadarApp : IDisposable
             if (_priceBook.TryByName(r.Name) is not { } pr) continue;     // unknown reward → no label
             var count = Math.Max(1, r.Count);
             var totalEx = pr.Exalted * count;
-            var text = (count > 1 ? $"{count}× " : "") + _priceBook.Format(totalEx);
+            // Show ONLY the value of the offer itself (full-stack value) — no "N×" count prefix, which
+            // read confusingly next to the price (e.g. "2× greater chaos orbs" → just its value).
+            var text = _priceBook.Format(totalEx);
             // Value tier (absolute Exalted): ≥5 ex green, <0.5 ex dim red, else amber.
             var color = totalEx >= 5.0 ? 0xFF66E066u : totalEx < 0.5 ? 0xFFE06666u : 0xFFE6C84Du;
             labels.Add(new RuneLabel(r.X, r.Y, r.W, r.H, text, color));
