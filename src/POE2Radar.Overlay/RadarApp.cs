@@ -33,6 +33,7 @@ public sealed class RadarApp : IDisposable
     private readonly LandmarkPatterns _landmarkPatterns;
     private readonly DisplayRules _displayRules;
     private readonly LandmarkStore _landmarkStore;
+    private readonly ModCatalog _modCatalog;
     private int _landmarkGen;
     private int _displayRulesGen;
     private int _landmarkStoreGen;
@@ -259,9 +260,10 @@ public sealed class RadarApp : IDisposable
         _landmarkStore = new LandmarkStore(Path.Combine(ConfigDir, "landmarks.json"));
         _live.CuratedLookup = _landmarkStore.Lookup;
         _landmarkStoreGen = _landmarkStore.Generation;
-        Console.WriteLine($"Hidden entities: {_hidden.Count} pattern(s); display rules: {_displayRules.Count}");
+        _modCatalog = new ModCatalog(Path.Combine(ConfigDir, "known_mods.json"));
+        Console.WriteLine($"Hidden entities: {_hidden.Count} pattern(s); display rules: {_displayRules.Count}; known mods: {_modCatalog.Count}");
         _api = new ApiServer(() => _state, _settings, GetNavSelection, ToggleNavTarget, ClearNavSelection,
-                             _hidden, _displayRules, _landmarkStore, CurrentTilePaths, AtlasJson, SetAtlasSelection,
+                             _hidden, _displayRules, _landmarkStore, CurrentTilePaths, () => _modCatalog.All, AtlasJson, SetAtlasSelection,
                              SetAtlasHighlight, VersionJson, _settings.ApiPort);
         try { _api.Start(); Console.WriteLine($"API on http://localhost:{_settings.ApiPort} (dashboard at /)"); }
         catch (Exception ex) { Console.Error.WriteLine($"API server disabled: {ex.Message}"); }
@@ -382,6 +384,9 @@ public sealed class RadarApp : IDisposable
                 if (localPlayer != 0 || hideCount > 0)
                     _entities = _entities.Where(e => e.Address != localPlayer
                                                      && (hideCount == 0 || !_hidden.IsHidden(e.Metadata))).ToList();
+                // Accumulate any newly-seen monster mod ids into the persistent catalog (debounced write)
+                // so the dashboard rule editor can offer them and they survive restarts / new content.
+                _modCatalog.Observe(_entities);
                 // If the user edited the custom landmark patterns, drop the cached per-area scan so it
                 // rebuilds with the new patterns this tick (otherwise it only refreshes on zone change).
                 if (_landmarkPatterns.Generation != _landmarkGen)
@@ -1487,6 +1492,7 @@ public sealed class RadarApp : IDisposable
 
     public void Dispose()
     {
+        _modCatalog.Flush(); // persist any mods seen since the last debounced write
         _replanner.Dispose();
         _api.Dispose();
         _renderer.Dispose();
